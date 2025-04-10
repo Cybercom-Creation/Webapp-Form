@@ -1,0 +1,350 @@
+/* General body styling */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+/* Form container styling */
+.form-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    width: 100%;
+    max-width: 800px;
+    margin: auto;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+/* Form card styling */
+.form-card {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    padding: 30px;
+    width: 500px;
+    max-width: 90%;
+    margin: 0 auto;
+    box-sizing: border-box;
+    transition: transform 0.3s ease-in-out;
+}
+
+/* Form heading */
+.form-card h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 24px;
+    color: #333;
+}
+
+/* Form group styling */
+.form-group {
+    margin-bottom: 10px; /* Reduced space between form groups */
+}
+
+.form-group label {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 0px;
+    color: #555;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-sizing: border-box;
+    transition: border-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.form-group input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+    outline: none;
+}
+
+/* Error message styling */
+.error-message {
+    color: red;
+    font-size: 12px;
+    margin-top: 0px; /* Reduced space above the error message */
+    margin-bottom: 0;
+    height: 16px;
+    line-height: 0px;
+    visibility: hidden;
+    opacity: 0; 
+    transition: opacity 0.3s ease-in-out;
+    display: block; 
+}
+
+.error-message.visible {
+    visibility: visible; /* Show the error message when it is active */
+    opacity: 1; /* Make the error message fully visible */
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-5px); /* Slightly reduced slide-in distance */
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Submit button styling */
+.submit-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.submit-button:hover {
+    background-color: #0056b3;
+    transform: scale(1.05);
+}
+
+.submit-button:active {
+    transform: scale(0.95);
+}
+
+/* Success message styling */
+.success-message {
+    text-align: center;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.success-message h2 {
+    color: #28a745;
+    margin-bottom: 15px;
+}
+
+.success-message a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.success-message a:hover {
+    text-decoration: underline;
+}
+
+/* Blocked message styling */
+.blocked-message {
+    text-align: center;
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 12px;
+    padding: 20px;
+    color: #856404;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    margin: 20px;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.blocked-message h2 {
+    color: #856404;
+    margin-bottom: 10px;
+}
+
+.blocked-message p {
+    font-size: 16px;
+    margin: 0;
+}
+
+/* Timer styling for Google Form */
+.timer-container {
+    position: fixed;
+    top: 10px;
+    right: 20px;
+    padding: 10px 15px; /* Padding around the timer */
+    border-radius: 5px; /* Rounded corners */
+    font-size: 14px; /* Adjusted font size */
+    font-weight: bold; /* Bold text */
+    color: #ffffff; /* White text color */
+    background-color: transparent; /* Remove the yellow background */
+    box-shadow: none; /* Remove the shadow */
+    z-index: 1000; /* Ensure it appears above other elements */
+}
+
+/* Custom Timer Styles */
+.custom-timer {
+    font-size: 12px; /* Small font size for a clean look */
+    font-weight: 500; /* Medium weight for better readability */
+    color: #ffffff; /* White text color */
+    text-align: center; /* Center-align the text */
+    background-color: #343a40; /* Dark gray background for a modern look */
+    padding: 6px 10px; /* Add padding around the text */
+    border-radius: 12px; /* Rounded corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+    border: 1px solid #212529; /* Thin border with a darker gray */
+    width: fit-content; /* Adjust the width to fit the content */
+    margin: 5px auto; /* Center the timer horizontally with some margin */
+    animation: fadeIn 0.5s ease-in-out; /* Smooth fade-in animation */
+}
+
+/* Pulse animation for the timer */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* Smooth transitions for screen changes */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Google form container styling */
+.google-form-container {
+    position: fixed; /* Make it cover the entire screen */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #ffffff; /* Optional: Add a background color */
+    z-index: 1000; /* Ensure it appears above other elements */
+}
+
+.google-form-iframe {
+    width: 100%;
+    height: 100%;
+    border: none; /* Remove the border */
+}
+
+/* Popup overlay styling */
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+}
+
+/* Popup box styling */
+.popup {
+    background: #ffffff;
+    padding: 20px 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    text-align: left; /* Align all text to the left */
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.popup h2 {
+    margin-bottom: 10px;
+    color: #333;
+    text-align: center; /* Keep the heading centered */
+}
+
+.popup p {
+    margin-bottom: 20px;
+    color: #555;
+}
+
+/* Close button styling */
+.close-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    display: block; /* Make the button a block element */
+    margin: 20px auto; /* Center the button horizontally */
+    text-align: center; /* Ensure text is centered */
+}
+
+.close-button:hover {
+    background-color: #0056b3;
+}
+
+/* Instructions Popup Styling */
+.instructions-list {
+    margin-top: 10px;
+    line-height: 1.6; /* Improve readability */
+}
+
+.instructions-list p {
+    margin: 5px 0; /* Add spacing between paragraphs */
+}
+
+.agree-button {
+    display: block;
+    margin: 20px auto; /* Center the button */
+    padding: 10px 20px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.agree-button:hover {
+    background-color: #218838; /* Darker green on hover */
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Fade-in animation for the timer */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
