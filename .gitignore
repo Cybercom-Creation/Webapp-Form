@@ -133,3 +133,4 @@ frontend/package-lock.json
 package-lock.json
 /screenshots
 frontend/package-lock.json
+/backend/src/screenshots

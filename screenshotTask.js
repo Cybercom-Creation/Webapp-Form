@@ -76,6 +76,5 @@ async function setupScreenshotTask() {
     }
 }
 
-// Call the setup function when the script starts
-setupScreenshotTask();
+module.exports = { setupScreenshotTask };
 // --- End Schedule Screenshot Task ---

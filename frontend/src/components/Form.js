@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './Form.css'; // Import the CSS file for styling
 
 const Form = () => {
@@ -10,9 +10,12 @@ const Form = () => {
     const [googleFormBlocked, setGoogleFormBlocked] = useState(false);
     const [showInstructions, setShowInstructions] = useState(false); // State to show instructions popup
     const [showWarning, setShowWarning] = useState(false); // State to show warning popup
-    const [timer, setTimer] = useState(600); // Timer in seconds
+    const [showPermissionError, setShowPermissionError] = useState(false); // State to show permission error dialog
+    const [timer, setTimer] = useState(60); // Timer in seconds
     const [isTimeOver, setIsTimeOver] = useState(false); // State to track if the timer is over
     const [violations, setViolations] = useState(0); // Track the number of violations
+    const googleFormRef = useRef(null); // Reference to the Google Form container
+    const [mediaStream, setMediaStream] = useState(null); // Store the media stream
 
     const [nameError, setNameError] = useState('');
     const [emailError, setEmailError] = useState('');
@@ -120,11 +123,121 @@ const Form = () => {
         }
     }, [submitted]);
 
-    const formatTime = (seconds) => {
-        const minutes = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+
+    // Function to request screen sharing permission and capture the screen
+    const requestScreenCapture = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    cursor: 'always', // Show the cursor in the capture
+                },
+                audio: false, // Disable audio capture
+            });
+
+            setMediaStream(stream); // Save the media stream for future use
+            console.log('Screen sharing started successfully!');
+            setShowInstructions(false); // Close the instructions popup
+            setSubmitted(true); // Allow the test to start only if permission is granted
+
+            // Listen for the "Stop Sharing" event
+            const videoTrack = stream.getVideoTracks()[0];
+            videoTrack.onended = () => {
+                handleStopSharingViolation(); // Handle the violation when screen sharing is stopped
+            };
+        } catch (error) {
+            console.error('Error requesting screen capture:', error);
+            setShowPermissionError(true); // Show permission error dialog if the user denies permission
+        }
     };
+
+    // Function to handle violations when the user stops screen sharing
+    const handleStopSharingViolation = () => {
+        setViolations((prev) => {
+            if (prev === 0) {
+                // First violation: Show warning
+                setShowWarning(true);
+            } else if (prev === 1) {
+                // Second violation: Block the test
+                setGoogleFormBlocked(true);
+                setSubmitted(false); // Stop the test
+            }
+            return prev + 1; // Increment the violations count
+        });
+    };
+
+    // Function to capture a screenshot from the media stream
+    const captureScreenshot = useCallback(() => {
+        if (!mediaStream) {
+            console.error('Media stream is not available.');
+            return;
+        }
+
+        const videoTrack = mediaStream.getVideoTracks()[0];
+        const imageCapture = new ImageCapture(videoTrack);
+
+        imageCapture
+            .grabFrame()
+            .then((bitmap) => {
+                // Convert the bitmap to a canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                const context = canvas.getContext('2d');
+                context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+                // Convert the canvas to a data URL (base64 image)
+                const screenshot = canvas.toDataURL('image/png');
+
+                // Send the screenshot to the backend
+                saveScreenshotToServer(screenshot);
+                console.log('Screenshot captured successfully!');
+            })
+            .catch((error) => {
+                console.error('Error capturing screenshot:', error);
+            });
+    }, [mediaStream]);
+
+    // Function to save the screenshot to the backend
+    const saveScreenshotToServer = async (screenshot) => {
+        try {
+            const response = await fetch('http://localhost:5000/api/screenshots', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ screenshot }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save screenshot');
+            }
+
+            console.log('Screenshot saved successfully!');
+        } catch (error) {
+            console.error('Error saving screenshot:', error);
+        }
+    };
+
+    // Automatically capture a screenshot every 2 minutes
+    useEffect(() => {
+        if (submitted && mediaStream) {
+            const interval = setInterval(() => {
+                console.log('Capturing screenshot...');
+                captureScreenshot();
+            }, 1 * 30 * 1000); // 2 minutes in milliseconds
+
+            return () => clearInterval(interval); // Cleanup interval on unmount
+        }
+    }, [submitted, mediaStream, captureScreenshot]);
+
+    // Stop the media stream when the component unmounts
+    useEffect(() => {
+        return () => {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach((track) => track.stop());
+            }
+        };
+    }, [mediaStream]);
 
     return (
         <div className="form-container">
@@ -157,11 +270,26 @@ const Form = () => {
                         <button
                             className="agree-button"
                             onClick={() => {
-                                setShowInstructions(false);
-                                setSubmitted(true); // Redirect to the Google Form page
+                                requestScreenCapture(); // Request screen sharing permission
                             }}
                         >
                             I Agree
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Permission Error Dialog */}
+            {showPermissionError && (
+                <div className="popup-overlay">
+                    <div className="popup">
+                        <h2>Permission Denied</h2>
+                        <p>You have denied screen-sharing permission. You cannot start the test without sharing your screen.</p>
+                        <button
+                            className="close-button"
+                            onClick={() => setShowPermissionError(false)} // Close the error dialog
+                        >
+                            Close
                         </button>
                     </div>
                 </div>
@@ -196,9 +324,9 @@ const Form = () => {
                     </div>
                 ) : (
                     <div className="success-message">
-                        <div className="google-form-container">
+                        <div className="google-form-container" ref={googleFormRef}>
                             <div className="timer-container">
-                                <p className="custom-timer">Time remaining: {formatTime(timer)}</p>
+                                <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{timer % 60}</p>
                             </div>
                             <iframe
                                 src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
