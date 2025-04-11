@@ -10,7 +10,7 @@ const Form = () => {
     const [googleFormBlocked, setGoogleFormBlocked] = useState(false);
     const [showInstructions, setShowInstructions] = useState(false); // State to show instructions popup
     const [showWarning, setShowWarning] = useState(false); // State to show warning popup
-    const [timer, setTimer] = useState(60); // Timer in seconds
+    const [timer, setTimer] = useState(600); // Timer in seconds
     const [isTimeOver, setIsTimeOver] = useState(false); // State to track if the timer is over
     const [violations, setViolations] = useState(0); // Track the number of violations
 
@@ -138,14 +138,21 @@ const Form = () => {
                             <p>You will have <strong>10 minutes</strong> to complete the test.</p>
                             <p>Ensure you complete the test within the time limit shown in the top-right corner.</p>
                             <p>During the test, <strong>do not</strong> perform any of the following actions:</p>
-                            <p>- Switch to another application or program.</p>
-                            <p>- Switch to another browser tab or window.</p>
-                            <p>- Minimize the browser window.</p>
-                            <p>- Interact with notifications (e.g., clicking on them).</p>
+                            <ul>
+                                <li>Switch to another application or program.</li>
+                                <li>Switch to another browser tab or window.</li>
+                                <li>Minimize the browser window.</li>
+                                <li>Turn off your screen or let your computer go to sleep.</li>
+                                <li>Interact with notifications (e.g., clicking on them).</li>
+                                <li>Disconnect from the internet or lose network connectivity.</li>
+                                <li>Close the browser or refresh the page.</li>
+                            </ul>
                             <p>If you perform any of the above actions:</p>
-                            <p>- You will receive a warning on the first violation.</p>
-                            <p>- On the second violation, you will be disqualified, and access to the test will be blocked.</p>
-                            <p>Click the checkbox below to confirm that you understand these instructions.</p>
+                            <ul>
+                                <li>You will receive a warning on the first violation.</li>
+                                <li>On the second violation, you will be disqualified, and access to the test will be blocked.</li>
+                            </ul>
+                            <p>Click I agree below to confirm that you understand these instructions.</p>
                         </div>
                         <button
                             className="agree-button"
