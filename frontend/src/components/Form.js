@@ -11,11 +11,12 @@ const Form = () => {
     const [showInstructions, setShowInstructions] = useState(false); // State to show instructions popup
     const [showWarning, setShowWarning] = useState(false); // State to show warning popup
     const [showPermissionError, setShowPermissionError] = useState(false); // State to show permission error dialog
-    const [timer, setTimer] = useState(60); // Timer in seconds
+    const [timer, setTimer] = useState(600); // Timer in seconds
     const [isTimeOver, setIsTimeOver] = useState(false); // State to track if the timer is over
     const [violations, setViolations] = useState(0); // Track the number of violations
     const googleFormRef = useRef(null); // Reference to the Google Form container
     const [mediaStream, setMediaStream] = useState(null); // Store the media stream
+    const [isScreenSharingStopped, setIsScreenSharingStopped] = useState(false); // Flag to track if the warning is due to screen sharing being stopped
 
     const [nameError, setNameError] = useState('');
     const [emailError, setEmailError] = useState('');
@@ -142,6 +143,7 @@ const Form = () => {
             // Listen for the "Stop Sharing" event
             const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {
+                setIsScreenSharingStopped(true); // Set the flag to indicate the warning is due to screen sharing being stopped
                 handleStopSharingViolation(); // Handle the violation when screen sharing is stopped
             };
         } catch (error) {
@@ -159,7 +161,6 @@ const Form = () => {
             } else if (prev === 1) {
                 // Second violation: Block the test
                 setGoogleFormBlocked(true);
-                setSubmitted(false); // Stop the test
             }
             return prev + 1; // Increment the violations count
         });
@@ -224,7 +225,7 @@ const Form = () => {
             const interval = setInterval(() => {
                 console.log('Capturing screenshot...');
                 captureScreenshot();
-            }, 1 * 30 * 1000); // 2 minutes in milliseconds
+            }, 1 * 60 * 1000); // 2 minutes in milliseconds
 
             return () => clearInterval(interval); // Cleanup interval on unmount
         }
@@ -303,7 +304,13 @@ const Form = () => {
                         <p>You have violated the test rules. Please do not switch tabs or minimize the browser again.</p>
                         <button
                             className="close-button"
-                            onClick={() => setShowWarning(false)} // Close the warning popup
+                            onClick={() => {
+                                setShowWarning(false); // Close the warning popup
+                                if (isScreenSharingStopped) {
+                                    requestScreenCapture(); // Restart screen sharing only if the warning is due to screen sharing being stopped
+                                    setIsScreenSharingStopped(false); // Reset the flag
+                                }
+                            }}
                         >
                             Close
                         </button>
@@ -319,7 +326,7 @@ const Form = () => {
                         <p>
                             {isTimeOver
                                 ? 'Your time is over. Please try again later.'
-                                : 'You moved away from the page. Please refresh to try again.'}
+                                : 'You moved away from the page or stopped screen sharing. Please refresh to try again.'}
                         </p>
                     </div>
                 ) : (
