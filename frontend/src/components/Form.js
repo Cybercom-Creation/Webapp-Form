@@ -22,6 +22,12 @@ const Form = () => {
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
 
+    const [cameraError, setCameraError] = useState(''); // Webcam specific errors
+    const [isCameraOn, setIsCameraOn] = useState(false); // Tracks if camera *should* be active
+
+    const videoRef = useRef(null);
+    const streamRef = useRef(null); 
+
     const validateEmail = (email) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(email);
@@ -235,7 +241,7 @@ const Form = () => {
             const interval = setInterval(() => {
                 console.log('Capturing screenshot...');
                 captureScreenshot();
-            }, 1 * 60 * 1000); // 2 minutes in milliseconds
+            }, 2 * 60 * 1000); // 2 minutes in milliseconds
 
             return () => clearInterval(interval); // Cleanup interval on unmount
         }
@@ -249,6 +255,128 @@ const Form = () => {
             }
         };
     }, [mediaStream]);
+
+    // --- Camera Control Functions ---
+    const startCamera = useCallback(async () => {
+        console.log("Attempting to start camera...");
+        setCameraError('');
+        setIsCameraOn(true); // Indicate intent
+
+        // Stop any existing stream first
+        if (streamRef.current) {
+            console.log("Stopping existing camera stream before starting new one.");
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null; // Clear ref
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null; // Clear video element source
+        }
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: false
+                });
+                console.log("Camera stream obtained:", stream);
+                if (!stream.getVideoTracks().length) {
+                    console.warn("No video tracks found in the stream!");
+                    throw new Error("No video track available.");
+                }
+                streamRef.current = stream; // Set ref
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                }
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                let userMessage = "Could not start camera.";
+                if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+                    userMessage = "Camera permission denied. Please allow camera access in browser settings.";
+                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                    userMessage = "No camera found. Ensure a camera is connected and enabled.";
+                } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+                    userMessage = "Camera might be in use by another application.";
+                } else {
+                    userMessage = `Could not start camera: ${err.message}`;
+                }
+                setCameraError(userMessage);
+                setIsCameraOn(false); // Failed to start
+            }
+        } else {
+            setCameraError("Your browser does not support camera access (getUserMedia).");
+            setIsCameraOn(false);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const stopCamera = useCallback(() => {
+        console.log("Stopping camera...");
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => {
+                track.stop();
+                console.log(`Camera track stopped: ${track.kind}`);
+            });
+            streamRef.current = null;
+        }
+        setIsCameraOn(false); // Mark as off
+        // Clear the video element source explicitly
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (submitted && !googleFormBlocked) {
+            console.log("Conditions met: Starting camera.");
+            startCamera();
+        } else {
+            console.log("Conditions not met or form blocked: Stopping camera.");
+            stopCamera();
+        }
+
+        // Cleanup on component unmount: ensure camera is stopped
+        return () => {
+            console.log("Form component unmounting: Stopping camera.");
+            stopCamera();
+        };
+    }, [submitted, googleFormBlocked, startCamera, stopCamera]); // Dependencies
+
+    // --- Effect to Assign Camera Stream to Video Element ---
+    useEffect(() => {
+        const videoElement = videoRef.current;
+        if (videoElement && streamRef.current) {
+            console.log("Assigning camera stream to video element.");
+            videoElement.srcObject = streamRef.current;
+
+            const handleVideoError = (e) => {
+                console.error("Video element error:", e);
+                setCameraError("Error playing camera feed.");
+                // Optionally try to stop/restart camera here, or just display error
+                stopCamera(); // Stop if the video element fails critically
+            };
+
+            videoElement.addEventListener('error', handleVideoError);
+
+            // Attempt to play (muted required for autoplay usually)
+            videoElement.play().catch(err => {
+                console.warn("Video play() failed initially (might be ok if browser requires interaction, but muted should help):", err);
+                // setCameraError("Could not automatically play camera feed."); // Optional: inform user
+            });
+
+            return () => {
+                console.log("Cleaning up video element stream assignment.");
+                videoElement.removeEventListener('error', handleVideoError);
+                // No need to stop stream here, stopCamera handles it.
+                // Setting srcObject to null is handled by stopCamera or if cameraStream becomes null.
+            };
+        } else if (videoElement && !streamRef.current) {
+            // Ensure srcObject is cleared if stream becomes null explicitly
+             if (videoElement.srcObject) {
+                 console.log("Camera stream is null, clearing video srcObject.");
+                 videoElement.srcObject = null;
+             }
+        }
+    }, [stopCamera]); 
 
     return (
         <div className="form-container">
@@ -339,6 +467,21 @@ const Form = () => {
                         <div className="google-form-container" ref={googleFormRef}>
                             <div className="timer-container">
                                 <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{timer % 60}</p>
+                            </div>
+                            <div className="camera-feed">
+                                <div className="camera-box">
+                                    {cameraError && <p className="error-message camera-error">{cameraError}</p>}
+                                    <video
+                                        ref={videoRef}
+                                        autoPlay
+                                        playsInline
+                                        muted
+                                        className={`camera-video ${cameraError ? 'hidden' : ''}`} // Hide video element on error
+                                    ></video>
+                                    {/* Optional: Show loading state while camera starts and stream is not yet ready */}
+                                    {isCameraOn && !streamRef.current && !cameraError && <p className="camera-loading">Starting camera...</p>}
+                                    {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
+                                </div>
                             </div>
                             <iframe
                                 src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"

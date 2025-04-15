@@ -348,3 +348,21 @@ body {
         transform: translateY(0);
     }
 }
+
+.camera-feed {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.camera-video {
+    width: 300px;
+    height: 200px;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    background-color: #000;
+    object-fit: cover;
+}
