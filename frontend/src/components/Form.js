@@ -22,6 +22,16 @@ const Form = () => {
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
 
+    const validateEmail = (email) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    };
+
+    const validatePhone = (phone) => {
+        const phoneRegex = /^[0-9]{10}$/; // Example: 10-digit phone number
+        return phoneRegex.test(phone);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -160,7 +170,7 @@ const Form = () => {
                 setShowWarning(true);
             } else if (prev === 1) {
                 // Second violation: Block the test
-                setGoogleFormBlocked(true);
+                setGoogleFormBlocked(true); // Block the test
             }
             return prev + 1; // Increment the violations count
         });
@@ -266,14 +276,9 @@ const Form = () => {
                                 <li>You will receive a warning on the first violation.</li>
                                 <li>On the second violation, you will be disqualified, and access to the test will be blocked.</li>
                             </ul>
-                            <p>Click I agree below to confirm that you understand these instructions.</p>
+                            <p>Click agree below to confirm that you understand these instructions.</p>
                         </div>
-                        <button
-                            className="agree-button"
-                            onClick={() => {
-                                requestScreenCapture(); // Request screen sharing permission
-                            }}
-                        >
+                        <button className="agree-button" onClick={requestScreenCapture}>
                             I Agree
                         </button>
                     </div>
@@ -352,9 +357,10 @@ const Form = () => {
                 <form className="form-card" onSubmit={handleSubmit}>
                     <h2>Submit Your Details</h2>
                     <div className="form-group">
-                        <label>Name:</label>
+                        <label htmlFor="name">Name:</label>
                         <input
                             type="text"
+                            id="name" // Add id
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             onBlur={() => checkFieldExists('name', name, setNameError)} // Validate name on blur
@@ -363,23 +369,30 @@ const Form = () => {
                         {nameError && <p className={`error-message ${nameError ? 'visible' : ''}`}>{nameError || ''}</p>}
                     </div>
                     <div className="form-group">
-                        <label>Email:</label>
+                        <label htmlFor="email">Email:</label>
                         <input
                             type="email"
+                            id="email" // Add id
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            onBlur={() => checkFieldExists('email', email, setEmailError)} // Validate email on blur
+                            onBlur={() => {
+                                checkFieldExists('email', email, setEmailError);
+                                validateEmail(email);
+                            }} // Validate email on blur
                             required
                         />
                         {emailError && <p className={`error-message ${emailError ? 'visible' : ''}`}>{emailError || ''}</p>}
                     </div>
                     <div className="form-group">
-                        <label>Phone Number:</label>
+                        <label htmlFor="phone">Phone Number:</label>
                         <input
                             type="tel"
+                            id="phone" // Add id
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
-                            onBlur={() => checkFieldExists('phone', phone, setPhoneError)} // Validate phone on blur
+                            onBlur={() => {checkFieldExists('phone', phone, setPhoneError);
+                            validatePhone(phone);
+                            }} // Validate phone on blur
                             required
                         />
                         {phoneError && <p className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError || ''}</p>}
