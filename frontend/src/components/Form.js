@@ -321,7 +321,7 @@ const capturePhoto = () => {
         const userDetails = { name, email, phone };
 
         try {
-            const response = await fetch('http://localhost:5000/api/users', {
+            const response = await fetch('https://webapp-form.onrender.com/api/users', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -384,7 +384,7 @@ const sendProctoringLog = async (logData) => {
     }
     console.log("Sending proctoring log:", logData);
     try {
-        const response = await fetch('http://localhost:5000/api/proctoring-logs', {
+        const response = await fetch('https://webapp-form.onrender.com/api/proctoring-logs', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -413,7 +413,7 @@ const sendProctoringLog = async (logData) => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/api/users/check-field', {
+            const response = await fetch('https://webapp-form.onrender.com/api/users/check-field', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

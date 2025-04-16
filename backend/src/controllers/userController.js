@@ -60,7 +60,7 @@ class UserController {
             this.db.query(query, [email], (error, results) => {
                 if (error) {
                     // Reject with a proper error object
-                    const dbError = new Error('Database error checking user existence.');
+                    const dbError = new Error(`Database. ${error}`);
                     dbError.statusCode = 500;
                     return reject(dbError);
                 }
