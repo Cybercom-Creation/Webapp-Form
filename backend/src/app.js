@@ -9,7 +9,7 @@ const userRoutes = require('./routes/userRoutes');
 // const envPath = path.resolve(__dirname, '.env');
 
 const app = express();
-const PORT = process.env.PORT || 12802;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors()); // Enable CORS
 
