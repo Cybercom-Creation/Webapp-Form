@@ -5,10 +5,13 @@ const fs = require('fs'); // File system module for saving files
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
 const db = require('./utils/db'); // Adjust path as needed
+const envPath = path.resolve(__dirname, '.env');
+
+require('dotenv').config({ path: envPath });
  
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 
 app.use(cors()); // Enable CORS
 
