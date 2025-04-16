@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+// Import the custom hook
+import { useMediaPipeFaceDetection } from '../hooks/useMediaPipeFaceDetection'; // Adjust path if needed
 import './Form.css'; // Import the CSS file for styling
 
 const Form = () => {
@@ -25,6 +27,16 @@ const Form = () => {
      const [isVideoReady, setIsVideoReady] = useState(false); // <-- Add video ready state
      const videoRef = useRef(null); // <-- Add video ref
      const canvasRef = useRef(null); // <-- Add canvas ref
+
+     // --- Use the MediaPipe Face Detection Hook ---
+    // Pass videoRef and boolean indicating if camera feed should be active for detection
+    const {
+        detectorReady,
+        detectionStatus,
+        faceDetectedBox,      // The latest box from state (for drawing overlay)
+        getLatestDetectedBox, // Function to get the box during capture
+    } = useMediaPipeFaceDetection(videoRef, isCameraOn && isVideoReady); // Detect when camera on AND video ready
+
   
      // --- State for Proctoring/Google Form ---
   
@@ -49,52 +61,103 @@ const Form = () => {
         return phoneRegex.test(phone);
     };
 
+    // const startCamera = async () => {
+    //     console.log("Attempting to start camera...");
+    //     setCameraError('');
+    //     setCapturedPhoto(null);
+    //     setIsVideoReady(false);
+    //     setIsCameraOn(false); // Ensure camera is marked off initially
+     
+    //     // Stop any existing stream first
+    //     if (cameraStream) {
+    //         cameraStream.getTracks().forEach(track => track.stop());
+    //         setCameraStream(null); // Clear state to trigger useEffect cleanup
+    //     }
+    //      if (videoRef.current) {
+    //          videoRef.current.srcObject = null; // Explicitly clear srcObject
+    //      }
+     
+     
+    //     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    //         try {
+    //             const stream = await navigator.mediaDevices.getUserMedia({
+    //                 video: true, // Keep it simple first
+    //                 audio: false
+    //             });
+    //             console.log("Camera stream obtained:", stream);
+    //             if (!stream.getVideoTracks().length) {
+    //                 console.warn("No video tracks found in the stream!");
+    //                 throw new Error("No video track available.");
+    //             }
+    //             setCameraStream(stream); // Set state, useEffect will handle the rest
+    //             setIsCameraOn(true); // Mark camera as 'on' (stream obtained)
+    //         } catch (err) {
+    //             console.error("Error accessing camera:", err);
+    //             let userMessage = "Could not start camera.";
+    //             if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+    //                 userMessage = "Camera permission denied. Please allow camera access in your browser settings and refresh.";
+    //             } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+    //                 userMessage = "No camera found. Please ensure a camera is connected and enabled.";
+    //             } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+    //                 userMessage = "Camera might be already in use by another application.";
+    //             } else {
+    //                  userMessage = `Could not start camera: ${err.message}`;
+    //             }
+    //             setCameraError(userMessage);
+    //             setCameraStream(null);
+    //             setIsCameraOn(false);
+    //             setIsVideoReady(false);
+    //         }
+    //     } else {
+    //         setCameraError("Your browser does not support camera access (getUserMedia).");
+    //         setIsCameraOn(false);
+    //         setIsVideoReady(false);
+    //     }
+    // };
+
+
+    // new
+    // --- Camera Control Functions ---
     const startCamera = async () => {
         console.log("Attempting to start camera...");
         setCameraError('');
-        setCapturedPhoto(null);
+        setCapturedPhoto(null); // Clear previous photo
         setIsVideoReady(false);
-        setIsCameraOn(false); // Ensure camera is marked off initially
-     
-        // Stop any existing stream first
+        setIsCameraOn(false);
+
         if (cameraStream) {
             cameraStream.getTracks().forEach(track => track.stop());
-            setCameraStream(null); // Clear state to trigger useEffect cleanup
+            setCameraStream(null);
         }
-         if (videoRef.current) {
-             videoRef.current.srcObject = null; // Explicitly clear srcObject
-         }
-     
-     
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+
+        // Check if the detector is ready (from the hook)
+        if (!detectorReady) {
+            setCameraError("Face detector is not ready yet. Please wait.");
+            return;
+        }
+
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: true, // Keep it simple first
+                    video: { facingMode: 'user' }, // Prefer front camera
                     audio: false
                 });
                 console.log("Camera stream obtained:", stream);
-                if (!stream.getVideoTracks().length) {
-                    console.warn("No video tracks found in the stream!");
-                    throw new Error("No video track available.");
-                }
-                setCameraStream(stream); // Set state, useEffect will handle the rest
-                setIsCameraOn(true); // Mark camera as 'on' (stream obtained)
+                if (!stream.getVideoTracks().length) throw new Error("No video track available.");
+                setCameraStream(stream);
+                setIsCameraOn(true); // Hook will react to this
             } catch (err) {
-                console.error("Error accessing camera:", err);
-                let userMessage = "Could not start camera.";
-                if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-                    userMessage = "Camera permission denied. Please allow camera access in your browser settings and refresh.";
-                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-                    userMessage = "No camera found. Please ensure a camera is connected and enabled.";
-                } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-                    userMessage = "Camera might be already in use by another application.";
-                } else {
-                     userMessage = `Could not start camera: ${err.message}`;
-                }
-                setCameraError(userMessage);
-                setCameraStream(null);
-                setIsCameraOn(false);
-                setIsVideoReady(false);
+                // ... (keep existing camera error handling) ...
+                 console.error("Error accessing camera:", err);
+                 let userMessage = "Could not start camera.";
+                 // ... (error messages based on err.name) ...
+                 setCameraError(userMessage);
+                 setCameraStream(null);
+                 setIsCameraOn(false);
+                 setIsVideoReady(false);
             }
         } else {
             setCameraError("Your browser does not support camera access (getUserMedia).");
@@ -102,7 +165,6 @@ const Form = () => {
             setIsVideoReady(false);
         }
     };
-
     const stopCamera = useCallback(() => {
         console.log("Stopping camera...");
         if (cameraStream) {
@@ -119,294 +181,521 @@ const Form = () => {
     }, [cameraStream]); // Dependency on cameraStream
  
     
-    // --- useEffect Hook to handle stream assignment and video readiness ---
+    // // --- useEffect Hook to handle stream assignment and video readiness ---
+    // useEffect(() => {
+    //     const videoElement = videoRef.current;
+    //     // Log the state of relevant variables when the effect runs
+    //     console.log(
+    //         "useEffect [cameraStream, isCameraOn] triggered. isCameraOn:", isCameraOn,
+    //         "cameraStream:", !!cameraStream, // Log true/false for brevity
+    //         "videoElement:", !!videoElement  // Log true/false for brevity
+    //     );
+
+    //     // We need the video element to be rendered (isCameraOn=true)
+    //     // AND the stream to be ready (cameraStream is not null)
+    //     // AND the ref to be attached (videoElement is not null)
+    //     if (isCameraOn && cameraStream && videoElement) {
+    //         console.log("useEffect: Conditions met. Assigning stream to video element.");
+    //         videoElement.srcObject = cameraStream;
+    //         setIsVideoReady(false); // Reset readiness until 'canplay' or 'loadedmetadata'
+
+    //         const handleCanPlay = () => {
+    //             console.log("useEffect: 'canplay' event fired. Video dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
+    //             // Ensure dimensions are valid before trying to play and setting ready
+    //             if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+    //                 const playPromise = videoElement.play();
+    //                 if (playPromise !== undefined) {
+    //                     playPromise.then(() => {
+    //                         console.log("useEffect: Playback started successfully.");
+    //                         setIsVideoReady(true); // Set ready *after* play starts
+    //                     }).catch(playError => {
+    //                         console.error("useEffect: Error playing video:", playError);
+    //                         setCameraError(`Could not play video stream: ${playError.message}`);
+    //                         setIsVideoReady(false);
+    //                     });
+    //                 } else {
+    //                     console.warn("useEffect: play() did not return a promise. Assuming playback started.");
+    //                     setIsVideoReady(true); // Tentatively set ready
+    //                 }
+    //             } else {
+    //                  console.warn("useEffect: 'canplay' fired but video dimensions are zero. Waiting for 'loadedmetadata' or subsequent events.");
+    //             }
+    //         };
+
+    //         const handleLoadedMetadata = () => {
+    //              console.log("useEffect: 'loadedmetadata' event fired. Video dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
+    //              // Sometimes play() needs to be called again after metadata is loaded if autoplay failed
+    //              if (videoElement.paused) {
+    //                 console.log("useEffect: Video paused on loadedmetadata, attempting play again.");
+    //                 videoElement.play().catch(e => console.error("Error playing after loadedmetadata:", e));
+    //              }
+                 
+    //         }
+
+    //         const handleError = (e) => {
+    //              console.error("useEffect: Video element error:", e);
+    //              // Provide more context if possible
+    //              const errorDetails = videoElement.error ? `Code: ${videoElement.error.code}, Message: ${videoElement.error.message}` : 'No details available';
+    //              setCameraError(`Error occurred with the video stream. ${errorDetails}`);
+    //              setIsVideoReady(false);
+    //         }
+
+    //         // Add listeners
+    //         videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+    //         videoElement.addEventListener('canplay', handleCanPlay);
+    //         videoElement.addEventListener('error', handleError);
+
+    //         // It's generally safe to attempt play() right after setting srcObject
+    //         // Muted videos often autoplay without issues, but catch potential errors.
+    //         videoElement.play().catch(initialPlayError => {
+    //             console.warn("useEffect: Initial play() attempt failed or was interrupted. Relying on events.", initialPlayError);
+    //             // Don't necessarily set error here, 'canplay' or 'error' events will handle it.
+    //         });
+
+
+    //         // Cleanup function for THIS effect instance
+    //         return () => {
+    //             console.log("useEffect cleanup: Removing event listeners for video element.");
+    //             videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    //             videoElement.removeEventListener('canplay', handleCanPlay);
+    //             videoElement.removeEventListener('error', handleError);
+
+    //              // Pause the video element when the effect cleans up (e.g., camera turned off)
+    //              // Avoid stopping tracks here; stopCamera should manage the MediaStream lifecycle.
+    //              if (videoElement) {
+    //                 videoElement.pause();
+                   
+    //              }
+    //              setIsVideoReady(false); // Ensure readiness is false on cleanup
+    //         };
+    //     } else {
+    //          console.log("useEffect: Conditions not met (isCameraOn, cameraStream, or videoElement missing).");
+    //          // If the video element exists but the camera should be off, ensure it's paused and clear src
+    //          if (videoElement && !isCameraOn) {
+    //              console.log("useEffect: Camera off, ensuring video is paused and src is cleared.");
+    //              videoElement.pause();
+    //              if (videoElement.srcObject) {
+    //                 videoElement.srcObject = null;
+    //              }
+    //          }
+    //     }
+   
+    // }, [cameraStream, isCameraOn]); // <-- CORRECTED: Depend on stream AND isCameraOn
+
+
+
+
+
+
+    // new
+    // --- useEffect Hook for stream assignment and video readiness (Unchanged) ---
     useEffect(() => {
         const videoElement = videoRef.current;
-        // Log the state of relevant variables when the effect runs
-        console.log(
-            "useEffect [cameraStream, isCameraOn] triggered. isCameraOn:", isCameraOn,
-            "cameraStream:", !!cameraStream, // Log true/false for brevity
-            "videoElement:", !!videoElement  // Log true/false for brevity
-        );
-
-        // We need the video element to be rendered (isCameraOn=true)
-        // AND the stream to be ready (cameraStream is not null)
-        // AND the ref to be attached (videoElement is not null)
         if (isCameraOn && cameraStream && videoElement) {
-            console.log("useEffect: Conditions met. Assigning stream to video element.");
             videoElement.srcObject = cameraStream;
-            setIsVideoReady(false); // Reset readiness until 'canplay' or 'loadedmetadata'
-
+            // --- DEBUG: Reset isVideoReady explicitly ---
+            console.log("useEffect[stream]: Setting isVideoReady to FALSE");
+            setIsVideoReady(false);
             const handleCanPlay = () => {
-                console.log("useEffect: 'canplay' event fired. Video dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
-                // Ensure dimensions are valid before trying to play and setting ready
+                console.log("Video Event: 'canplay'"); // Log event
                 if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-                    const playPromise = videoElement.play();
-                    if (playPromise !== undefined) {
-                        playPromise.then(() => {
-                            console.log("useEffect: Playback started successfully.");
-                            setIsVideoReady(true); // Set ready *after* play starts
-                        }).catch(playError => {
-                            console.error("useEffect: Error playing video:", playError);
-                            setCameraError(`Could not play video stream: ${playError.message}`);
-                            setIsVideoReady(false);
-                        });
-                    } else {
-                        console.warn("useEffect: play() did not return a promise. Assuming playback started.");
-                        setIsVideoReady(true); // Tentatively set ready
-                    }
+                    videoElement.play().then(() => {
+                       // --- DEBUG: Log when setting isVideoReady to TRUE ---
+                       console.log("useEffect[stream]: Play successful, setting isVideoReady to TRUE");
+                       setIsVideoReady(true);
+                       // --- END DEBUG ---
+                    }).catch(e =>{
+                       console.error("useEffect[stream]: Play error after canplay:", e);
+                       setCameraError(`Video play error: ${e.message}`);
+                       // --- DEBUG: Ensure isVideoReady is FALSE on error ---
+                       console.log("useEffect[stream]: Play error, setting isVideoReady to FALSE");
+                       setIsVideoReady(false);
+                       // --- END DEBUG ---
+                    });
                 } else {
-                     console.warn("useEffect: 'canplay' fired but video dimensions are zero. Waiting for 'loadedmetadata' or subsequent events.");
+                   console.warn("Video Event: 'canplay' fired but dimensions are 0");
                 }
-            };
-
-            const handleLoadedMetadata = () => {
-                 console.log("useEffect: 'loadedmetadata' event fired. Video dimensions:", videoElement.videoWidth, "x", videoElement.videoHeight);
-                 // Sometimes play() needs to be called again after metadata is loaded if autoplay failed
-                 if (videoElement.paused) {
-                    console.log("useEffect: Video paused on loadedmetadata, attempting play again.");
-                    videoElement.play().catch(e => console.error("Error playing after loadedmetadata:", e));
-                 }
-                 
-            }
-
-            const handleError = (e) => {
-                 console.error("useEffect: Video element error:", e);
-                 // Provide more context if possible
-                 const errorDetails = videoElement.error ? `Code: ${videoElement.error.code}, Message: ${videoElement.error.message}` : 'No details available';
-                 setCameraError(`Error occurred with the video stream. ${errorDetails}`);
-                 setIsVideoReady(false);
-            }
-
-            // Add listeners
+           };
+           const handleLoadedMetadata = () => {
+            console.log("Video Event: 'loadedmetadata'"); // Log event
+            if (videoElement.paused) {
+                videoElement.play().catch(e => console.error("Error playing after loadedmetadata:", e));
+             }
+        };
+        const handleError = (e) => {
+            console.error("Video Event: 'error'", e); // Log event
+            setCameraError(`Video element error: ${videoElement.error?.message || 'Unknown error'}`);
+            // --- DEBUG: Ensure isVideoReady is FALSE on error ---
+            console.log("useEffect[stream]: Video error, setting isVideoReady to FALSE");
+            setIsVideoReady(false);
+            // --- END DEBUG ---
+        };
             videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
             videoElement.addEventListener('canplay', handleCanPlay);
             videoElement.addEventListener('error', handleError);
-
-            // It's generally safe to attempt play() right after setting srcObject
-            // Muted videos often autoplay without issues, but catch potential errors.
-            videoElement.play().catch(initialPlayError => {
-                console.warn("useEffect: Initial play() attempt failed or was interrupted. Relying on events.", initialPlayError);
-                // Don't necessarily set error here, 'canplay' or 'error' events will handle it.
+            videoElement.play().catch(e => {
+                console.warn("useEffect[stream]: Initial play() failed (may be interrupted):", e);
+                // Don't set isVideoReady here, rely on events
             });
-
-
-            // Cleanup function for THIS effect instance
             return () => {
-                console.log("useEffect cleanup: Removing event listeners for video element.");
+                console.log("useEffect[stream]: Cleanup");
                 videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
                 videoElement.removeEventListener('canplay', handleCanPlay);
                 videoElement.removeEventListener('error', handleError);
-
-                 // Pause the video element when the effect cleans up (e.g., camera turned off)
-                 // Avoid stopping tracks here; stopCamera should manage the MediaStream lifecycle.
-                 if (videoElement) {
-                    videoElement.pause();
-                   
-                 }
-                 setIsVideoReady(false); // Ensure readiness is false on cleanup
+                if (videoElement) videoElement.pause();
+                // --- DEBUG: Ensure isVideoReady is FALSE on cleanup ---
+                console.log("useEffect[stream]: Cleanup, setting isVideoReady to FALSE");
+                setIsVideoReady(false);
+                // --- END DEBUG ---
             };
         } else {
-             console.log("useEffect: Conditions not met (isCameraOn, cameraStream, or videoElement missing).");
-             // If the video element exists but the camera should be off, ensure it's paused and clear src
              if (videoElement && !isCameraOn) {
-                 console.log("useEffect: Camera off, ensuring video is paused and src is cleared.");
                  videoElement.pause();
-                 if (videoElement.srcObject) {
-                    videoElement.srcObject = null;
+                 if (videoElement.srcObject) videoElement.srcObject = null;
+                 // --- DEBUG: Ensure isVideoReady is FALSE when camera turns off ---
+                 if (isVideoReady) {
+                    console.log("useEffect[stream]: Camera off, setting isVideoReady to FALSE");
+                    setIsVideoReady(false);
                  }
+                 // --- END DEBUG ---
              }
         }
-   
-    }, [cameraStream, isCameraOn]); // <-- CORRECTED: Depend on stream AND isCameraOn
+    }, [cameraStream, isCameraOn]); // Dependencies are correct
 
-    // --- Capture Photo & Save Locally ---
-const capturePhoto = () => {
-    setCameraError(''); // Clear previous errors
+
+
+
+
+
+
+//     // --- Capture Photo & Save Locally ---
+// const capturePhoto = () => {
+//     setCameraError(''); // Clear previous errors
+//     const video = videoRef.current;
+//     const canvas = canvasRef.current;
+ 
+//     if (!video || !canvas) {
+//         console.error("capturePhoto: Video or Canvas ref is not available.");
+//         setCameraError("Camera components not ready.");
+//         return;
+//     }
+ 
+//     // Check video readiness more robustly
+//     if (!isVideoReady || video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+//         console.error(`capturePhoto: Video not ready. isVideoReady=${isVideoReady}, readyState=${video.readyState}, width=${video.videoWidth}, height=${video.videoHeight}`);
+//         setCameraError("Video stream not ready or has no dimensions. Please wait or try restarting the camera.");
+//         return;
+//     }
+ 
+//     console.log(`capturePhoto: Capturing frame ${video.videoWidth}x${video.videoHeight}`);
+//     canvas.width = video.videoWidth;
+//     canvas.height = video.videoHeight;
+//     const context = canvas.getContext('2d');
+ 
+//     try {
+//         // Apply mirroring transform
+//         context.translate(canvas.width, 0);
+//         context.scale(-1, 1);
+//         // Draw the current video frame onto the canvas
+//         context.drawImage(video, 0, 0, canvas.width, canvas.height);
+//         // Reset transform to avoid affecting future draws (though usually not needed here)
+//         context.setTransform(1, 0, 0, 1, 0, 0);
+//         console.log("capturePhoto: Frame drawn onto canvas.");
+//     } catch (drawError) {
+//         console.error("capturePhoto: Error drawing video frame to canvas:", drawError);
+//         setCameraError("Failed to capture frame from video.");
+//         try { context.setTransform(1, 0, 0, 1, 0, 0); } catch(e){} // Attempt reset
+//         return;
+//     }
+ 
+//     let photoDataUrl = '';
+//     try {
+//          // Get the image data from the canvas as a JPEG
+//          photoDataUrl = canvas.toDataURL('image/jpeg', 0.9); // Use JPEG for smaller size, 0.9 quality
+//          if (!photoDataUrl || photoDataUrl === 'data:,') { // Check for empty data URL
+//              console.error("capturePhoto: Generated data URL is invalid or empty.");
+//              setCameraError("Failed to generate valid image data from canvas.");
+//              return;
+//          }
+//          console.log("capturePhoto: Data URL generated (length approx:", photoDataUrl.length, ")");
+//     } catch (toUrlError) {
+//          console.error("capturePhoto: Error converting canvas to Data URL:", toUrlError);
+//          setCameraError("Failed to convert captured image to data format.");
+//          return;
+//     }
+ 
+//     // --- Save Locally (Download) ---
+//     try {
+//         const link = document.createElement('a');
+//         link.href = photoDataUrl;
+//         // Use a more descriptive filename
+//         const timestamp = new Date().toISOString().replace(/[:.-]/g, '');
+//         link.download = `user_photo_${timestamp}.jpg`;
+//         document.body.appendChild(link); // Required for Firefox
+//         link.click();
+//         document.body.removeChild(link); // Clean up the link
+//         console.log("capturePhoto: Download initiated for", link.download);
+ 
+//         setCapturedPhoto(photoDataUrl); // Update preview state *after* successful download attempt
+//         stopCamera(); // Stop camera after successful capture & save attempt
+ 
+//     } catch (downloadError) {
+//         console.error("capturePhoto: Error creating or triggering download link:", downloadError);
+//         // Don't set camera error here, the capture worked, just download failed.
+//         // Maybe add a different state/message for download issues?
+//         alert("Photo captured, but failed to initiate automatic download. Please check browser settings.");
+//         setCapturedPhoto(photoDataUrl); // Still show preview
+//         stopCamera(); // Still stop camera
+//     }
+// };
+ // new
+
+ // --- Capture Photo (Cropped Face) & Convert to Base64 ---
+ const capturePhoto = () => {
+    // --- DEBUG: Log function call ---
+    console.log("capturePhoto function called!");
+    // --- END DEBUG ---
+
+    setCameraError('');
     const video = videoRef.current;
     const canvas = canvasRef.current;
- 
-    if (!video || !canvas) {
-        console.error("capturePhoto: Video or Canvas ref is not available.");
-        setCameraError("Camera components not ready.");
+
+    // --- DEBUG: Log state before checks ---
+    console.log("capturePhoto checks:", { isVideoReady, detectorReady, videoExists: !!video, canvasExists: !!canvas, videoState: video?.readyState, videoW: video?.videoWidth });
+    // --- END DEBUG ---
+
+    if (!video || !canvas || !isVideoReady || video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0) {
+        setCameraError("Camera components not ready or video stream issue.");
+        console.error("capturePhoto: Pre-capture checks failed."); // Log failure
         return;
     }
- 
-    // Check video readiness more robustly
-    if (!isVideoReady || video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
-        console.error(`capturePhoto: Video not ready. isVideoReady=${isVideoReady}, readyState=${video.readyState}, width=${video.videoWidth}, height=${video.videoHeight}`);
-        setCameraError("Video stream not ready or has no dimensions. Please wait or try restarting the camera.");
+    if (!detectorReady) {
+        setCameraError("Face detector is not ready.");
+        console.error("capturePhoto: Detector not ready."); // Log failure
         return;
     }
- 
-    console.log(`capturePhoto: Capturing frame ${video.videoWidth}x${video.videoHeight}`);
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
- 
-    try {
-        // Apply mirroring transform
-        context.translate(canvas.width, 0);
-        context.scale(-1, 1);
-        // Draw the current video frame onto the canvas
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Reset transform to avoid affecting future draws (though usually not needed here)
-        context.setTransform(1, 0, 0, 1, 0, 0);
-        console.log("capturePhoto: Frame drawn onto canvas.");
-    } catch (drawError) {
-        console.error("capturePhoto: Error drawing video frame to canvas:", drawError);
-        setCameraError("Failed to capture frame from video.");
-        try { context.setTransform(1, 0, 0, 1, 0, 0); } catch(e){} // Attempt reset
+
+    console.log("capturePhoto: Getting latest detected face box...");
+    const detectedPixelBox = getLatestDetectedBox();
+
+    if (!detectedPixelBox) {
+        console.error("capturePhoto: No face detected recently.");
+        setCameraError("No face detected. Please ensure your face is clearly visible and centered.");
         return;
     }
- 
-    let photoDataUrl = '';
-    try {
-         // Get the image data from the canvas as a JPEG
-         photoDataUrl = canvas.toDataURL('image/jpeg', 0.9); // Use JPEG for smaller size, 0.9 quality
-         if (!photoDataUrl || photoDataUrl === 'data:,') { // Check for empty data URL
-             console.error("capturePhoto: Generated data URL is invalid or empty.");
-             setCameraError("Failed to generate valid image data from canvas.");
-             return;
-         }
-         console.log("capturePhoto: Data URL generated (length approx:", photoDataUrl.length, ")");
-    } catch (toUrlError) {
-         console.error("capturePhoto: Error converting canvas to Data URL:", toUrlError);
-         setCameraError("Failed to convert captured image to data format.");
+
+    // ... (rest of the cropping and Base64 conversion logic - keep as is) ...
+    const box = detectedPixelBox;
+    console.log(`capturePhoto: Using face box at x:${box.x.toFixed(0)}, y:${box.y.toFixed(0)}, w:${box.width.toFixed(0)}, h:${box.height.toFixed(0)}`);
+    const sx = Math.max(0, box.x);
+    const sy = Math.max(0, box.y);
+    const sw = Math.min(video.videoWidth - sx, box.width);
+    const sh = Math.min(video.videoHeight - sy, box.height);
+
+    if (sw <= 0 || sh <= 0) {
+         console.error("capturePhoto: Invalid face dimensions after boundary check.", { sx, sy, sw, sh, vw: video.videoWidth, vh: video.videoHeight });
+         setCameraError("Detected face region is invalid or too close to edge. Try repositioning.");
          return;
     }
- 
-    // --- Save Locally (Download) ---
+    canvas.width = Math.round(sw);
+    canvas.height = Math.round(sh);
+    const context = canvas.getContext('2d');
     try {
-        const link = document.createElement('a');
-        link.href = photoDataUrl;
-        // Use a more descriptive filename
-        const timestamp = new Date().toISOString().replace(/[:.-]/g, '');
-        link.download = `user_photo_${timestamp}.jpg`;
-        document.body.appendChild(link); // Required for Firefox
-        link.click();
-        document.body.removeChild(link); // Clean up the link
-        console.log("capturePhoto: Download initiated for", link.download);
- 
-        setCapturedPhoto(photoDataUrl); // Update preview state *after* successful download attempt
-        stopCamera(); // Stop camera after successful capture & save attempt
- 
-    } catch (downloadError) {
-        console.error("capturePhoto: Error creating or triggering download link:", downloadError);
-        // Don't set camera error here, the capture worked, just download failed.
-        // Maybe add a different state/message for download issues?
-        alert("Photo captured, but failed to initiate automatic download. Please check browser settings.");
-        setCapturedPhoto(photoDataUrl); // Still show preview
-        stopCamera(); // Still stop camera
+        context.drawImage( video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height );
+        console.log("capturePhoto: Cropped face drawn onto canvas.");
+    } catch (drawError) {
+        console.error("capturePhoto: Error drawing cropped face to canvas:", drawError);
+        setCameraError("Failed to capture frame from video.");
+        return;
+    }
+    let faceBase64 = '';
+    try {
+        faceBase64 = canvas.toDataURL('image/jpeg', 0.9);
+        if (!faceBase64 || faceBase64 === 'data:,') { throw new Error("Generated data URL is invalid or empty."); }
+        console.log("capturePhoto: Base64 data URL generated for cropped face.");
+    } catch (toUrlError) {
+        console.error("capturePhoto: Error converting canvas to Base64:", toUrlError);
+        setCameraError("Failed to convert captured image.");
+        return;
+    }
+    setCapturedPhoto(faceBase64);
+    stopCamera();
+};
+
+
+
+//     const handleSubmit = async (e) => {
+//         e.preventDefault();
+//         setError('');
+//         setCameraError(''); // Clear camera error on submit
+
+//         // Add check for captured photo if it's required
+//         if (!capturedPhoto) {
+//             setError('Please capture your photo before submitting.');
+//             setCameraError('Photo capture is required.'); // Add camera-specific error
+//             return;
+//        }
+
+//        if (nameError || emailError || phoneError) {
+//            setError('Please fix the errors in your details before submitting.');
+//            return;
+//        }
+//         const userDetails = { name, email, phone };
+//         // --- ADD THIS LINE FOR DEBUGGING ---
+//         console.log("Sending user details:", userDetails);
+//         // --- END DEBUGGING LINE ---
+//         // You might want to include the photo data URL here if you intend to send it
+//         // const userDetails = { name, email, phone, photo: capturedPhoto };
+
+//         console.log("Submitting form..."); // Add log
+
+//         try {
+//             const response = await fetch('http://localhost:5000/api/users', {
+//                 method: 'POST',
+//                 headers: {
+//                     'Content-Type': 'application/json',
+//                 },
+//                 body: JSON.stringify(userDetails),
+//             });
+
+//             const responseBody = await response.text(); // Read body once
+//             console.log("Submit Response Status:", response.status);
+//             console.log("Submit Response Body:", responseBody);
+
+//             if (!response.ok) {
+//                 // Try to parse JSON error message if possible
+//                 let errorMessage = `Form submission failed (Status: ${response.status})`;
+//                 try {
+//                     const errorData = JSON.parse(responseBody);
+//                     errorMessage = errorData.message || errorMessage;
+//                 } catch (parseError) {
+//                     // Use text body if not JSON
+//                     errorMessage = responseBody || errorMessage;
+//                 }
+//                 console.error("Submission error:", errorMessage);
+//                 throw new Error(errorMessage);
+//            }
+
+//            // Assuming success response is JSON
+//             let data;
+//             try {
+//                 data = JSON.parse(responseBody);
+//             } catch (parseError) {
+//                 console.warn("Response body wasn't valid JSON, but status was OK.");
+//                 data = { message: "Submission successful (non-JSON response)." };
+//             }
+//             // --- STORE USER ID ---
+//        if (data && data.userId) {
+//            setUserId(data.userId); // Store the received user ID
+//            console.log("Submission successful, User ID:", data.userId);
+//            setShowInstructions(true); // Show instructions popup
+//        } else {
+//             console.error("Submission successful, but User ID not received from backend!");
+//             // Handle this error appropriately - maybe prevent proceeding?
+//             setError("Submission succeeded, but failed to get required user info. Please contact support.");
+//        }
+//        // --- End Store User ID ---
+
+//            // console.log("Submission successful:", data);
+//            // setShowInstructions(true); // Show instructions popup after form submission
+//        } catch (err) {
+//            console.error("Caught submission error:", err);
+//            // Display the error from the fetch operation or the thrown error
+//            setError(err.message || 'An unexpected error occurred during submission.');
+//        }
+//    };
+
+
+// new
+
+// --- handleSubmit (Sends Base64 photo) ---
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setCameraError('');
+
+    // Check if CROPPED face photo was captured
+    if (!capturedPhoto) {
+         setError('Please capture your face photo before submitting.');
+         setCameraError('Face photo is required.');
+         console.log("handleSubmit blocked: Photo not captured."); // Add log
+         return;
+    }
+    if (nameError || emailError || phoneError) {
+        setError('Please fix the errors in your details before submitting.');
+        return;
+    }
+
+    // Include the Base64 photo data
+    const userDetails = {
+        name,
+        email,
+        phone,
+        photoBase64: capturedPhoto // Send the Base64 string
+    };
+
+    console.log("Sending user details (including photoBase64):", { name, email, phone, photoLength: capturedPhoto.length });
+    console.log("Submitting form...");
+
+    try {
+        // Ensure backend endpoint matches and expects photoBase64
+        const response = await fetch('http://localhost:5000/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userDetails),
+        });
+
+        const responseBody = await response.text();
+        console.log("Submit Response Status:", response.status);
+        // console.log("Submit Response Body:", responseBody); // Avoid logging large base64
+
+        if (!response.ok) {
+             let errorMessage = `Form submission failed (Status: ${response.status})`;
+             try { errorMessage = JSON.parse(responseBody).message || errorMessage; } catch (e) { errorMessage = responseBody || errorMessage; }
+             throw new Error(errorMessage);
+        }
+         let data;
+         try { data = JSON.parse(responseBody); } catch (e) { data = { message: "Submission successful (non-JSON response)." }; }
+        if (data && data.userId) {
+            setUserId(data.userId);
+            console.log("Submission successful, User ID:", data.userId);
+            setShowInstructions(true);
+        } else {
+             console.error("Submission successful, but User ID not received!");
+             setError("Submission succeeded, but failed to get user info.");
+        }
+    } catch (err) {
+        console.error("Caught submission error:", err);
+        setError(err.message || 'An unexpected error occurred.');
     }
 };
- 
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        setCameraError(''); // Clear camera error on submit
-
-        // Add check for captured photo if it's required
-        if (!capturedPhoto) {
-            setError('Please capture your photo before submitting.');
-            return;
-       }
-
-        if (nameError || emailError || phoneError) {
-            setError('Please fix the errors in your details before submitting.');
-            return;
-        }
-
-        const userDetails = { name, email, phone };
-        // You might want to include the photo data URL here if you intend to send it
-        // const userDetails = { name, email, phone, photo: capturedPhoto };
-
-        console.log("Submitting form..."); // Add log
-
-        try {
-            const response = await fetch('http://localhost:5000/api/users', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(userDetails),
-            });
-
-            const responseBody = await response.text(); // Read body once
-            console.log("Submit Response Status:", response.status);
-            console.log("Submit Response Body:", responseBody);
-
-            if (!response.ok) {
-                // Try to parse JSON error message if possible
-                let errorMessage = `Form submission failed (Status: ${response.status})`;
-                try {
-                    const errorData = JSON.parse(responseBody);
-                    errorMessage = errorData.message || errorMessage;
-                } catch (parseError) {
-                    // Use text body if not JSON
-                    errorMessage = responseBody || errorMessage;
-                }
-                console.error("Submission error:", errorMessage);
-                throw new Error(errorMessage);
-           }
-
-           // Assuming success response is JSON
-            let data;
-            try {
-                data = JSON.parse(responseBody);
-            } catch (parseError) {
-                console.warn("Response body wasn't valid JSON, but status was OK.");
-                data = { message: "Submission successful (non-JSON response)." };
-            }
-            // --- STORE USER ID ---
-       if (data && data.userId) {
-           setUserId(data.userId); // Store the received user ID
-           console.log("Submission successful, User ID:", data.userId);
-           setShowInstructions(true); // Show instructions popup
-       } else {
-            console.error("Submission successful, but User ID not received from backend!");
-            // Handle this error appropriately - maybe prevent proceeding?
-            setError("Submission succeeded, but failed to get required user info. Please contact support.");
-       }
-       // --- End Store User ID ---
-
-           // console.log("Submission successful:", data);
-           // setShowInstructions(true); // Show instructions popup after form submission
-       } catch (err) {
-           console.error("Caught submission error:", err);
-           // Display the error from the fetch operation or the thrown error
-           setError(err.message || 'An unexpected error occurred during submission.');
-       }
-   };
 
    // Function to send proctoring log data to the backend
-const sendProctoringLog = async (logData) => {
+   const sendProctoringLog = async (logData) => {
     if (!logData.userId) {
         console.error("Cannot send proctoring log: User ID is missing.");
-        return; // Don't send if userId isn't set
+        return;
     }
-    console.log("Sending proctoring log:", logData);
+    // --- Remove violationCount from logData before sending ---
+    const { userId, triggerEvent, startTime, endTime } = logData;
+    const dataToSend = { userId, triggerEvent, startTime, endTime };
+    // --- End Removal ---
+
+    console.log("Sending proctoring log:", dataToSend); // Log the modified data
     try {
         const response = await fetch('http://localhost:5000/api/proctoring-logs', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(logData),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToSend), // Send the modified data
         });
- 
         if (!response.ok) {
              const errorData = await response.json();
              throw new Error(errorData.message || `Failed to save proctoring log (Status: ${response.status})`);
         }
- 
         const result = await response.json();
         console.log('Proctoring log saved successfully:', result.message);
- 
     } catch (error) {
         console.error('Error sending proctoring log:', error);
-        // Optionally notify the user or retry? For now, just log it.
     }
 };
 
@@ -697,59 +986,107 @@ useEffect(() => {
                         />
                         {phoneError && <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError || ''}</p>}
                     </div>
-                    {/* --- Camera Section --- */}
+                    {/* --- Camera & Face Detection Section --- */}
                     <div className="form-group camera-section">
-                        <label>Your Photo:</label>
+                        <label>Your Face Photo:</label>
                         <p className="camera-instructions">
-                            Please capture a clear photo of yourself. It will be saved to your computer.
+                            Position your face clearly in the frame. We'll capture a cropped photo of your face.
                         </p>
-     
+                        {/* Show detection status from the hook */}
+                        <p className="detection-status">Status: {detectionStatus}</p>
+
                         {/* Camera Error Display */}
                         {cameraError && <p className="error-message visible">{cameraError}</p>}
-     
-                        {/* Button to start camera (only if not on and no photo taken yet) */}
+
+                        {/* Button to start camera */}
                         {!isCameraOn && !capturedPhoto && (
-                            <button type="button" onClick={startCamera} className="camera-button">
-                                Start Camera
+                            <button
+                                type="button"
+                                onClick={startCamera}
+                                className="camera-button"
+                                // Disable if detector isn't ready (from hook)
+                                disabled={!detectorReady}
+                            >
+                                {detectorReady ? 'Start Camera' : 'Loading Detector...'}
                             </button>
                         )}
-     
-                        {/* Live feed and capture controls (only if camera is on) */}
-                        {isCameraOn && (
-                            <div className="camera-live">
-                                <video
-                                    ref={videoRef}
-                                    autoPlay
-                                    playsInline // Important for mobile
-                                    muted // Often required for autoplay without user gesture
-                                    className="camera-video-feed"
-                                ></video>
-                                <div className="camera-controls">
-                                     <button
-                                        type="button"
-                                        onClick={capturePhoto}
-                                        className="camera-button capture-button"
-                                        disabled={!isVideoReady} // Disable button until video is ready
-                                    >
-                                        {isVideoReady ? 'Capture & Save Photo' : 'Loading Camera...'}
-                                    </button>
-                                    <button type="button" onClick={stopCamera} className="camera-button cancel-button">
-                                        Cancel Camera
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-     
-                        {/* Hidden canvas for drawing */}
+
+                      {/* Live feed, detection box, and capture controls */}
+{isCameraOn && (
+    <div className="camera-live-container">
+        <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="camera-video-feed"
+        ></video>
+
+        {/* Overlay for drawing detection box */}
+        {faceDetectedBox && isVideoReady && videoRef.current && (
+            <>
+                {/* --- DEBUG: Log dimensions and coordinates --- */}
+                {console.log("Render Overlay:", {
+                    videoOffsetW: videoRef.current.offsetWidth, // Rendered width
+                    videoClientW: videoRef.current.clientWidth, // Width inside padding
+                    videoVideoW: videoRef.current.videoWidth,   // Intrinsic width
+                    boxX: faceDetectedBox.x,
+                    boxW: faceDetectedBox.width,
+                    calculatedLeft: videoRef.current.offsetWidth - faceDetectedBox.x - faceDetectedBox.width
+                })}
+                {/* --- END DEBUG ---
+                <div className="detection-box-overlay" style={{
+                    position: 'absolute',
+                    // --- Refined Mirroring Calculation ---
+                    // Use offsetWidth for rendered width
+                    left: `${videoRef.current.offsetWidth - faceDetectedBox.x - faceDetectedBox.width}px`,
+                    // --- End Refined Calculation ---
+                    top: `${faceDetectedBox.y}px`,
+                    width: `${faceDetectedBox.width}px`,
+                    height: `${faceDetectedBox.height}px`,
+                    border: '3px solid limegreen',
+                    boxShadow: '0 0 10px rgba(50, 205, 50, 0.7)',
+                    boxSizing: 'border-box', // Ensure border is included in width/height
+                    pointerEvents: 'none'
+                }}></div> */}
+            </>
+        )}
+
+        {/* Camera controls */}
+        <div className="camera-controls">
+            {/* ... buttons ... */}
+             {/* --- DEBUG: Log button state --- */}
+             {console.log("Render Button Check:", { isVideoReady, hasBox: !!faceDetectedBox, isDisabled: !isVideoReady || !faceDetectedBox })}
+             {/* --- END DEBUG --- */}
+             <button
+                 type="button"
+                 onClick={capturePhoto} // Ensure this calls the function
+                 className="camera-button capture-button"
+                 disabled={!isVideoReady || !faceDetectedBox}
+             >
+                 {!isVideoReady ? 'Loading Camera...' : !faceDetectedBox ? 'Align Face...' : 'Capture Face Photo'}
+             </button>
+             <button type="button" onClick={stopCamera} className="camera-button cancel-button">
+                 Cancel Camera
+             </button>
+        </div>
+    </div>
+)}
+                        {/* Hidden canvas for drawing the CROPPED face */}
                         <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
-     
-                        {/* Preview of captured photo */}
-                        {capturedPhoto && !isCameraOn && ( // Show preview only if captured and camera is off
+
+                        {/* Preview of captured CROPPED face photo */}
+                        {capturedPhoto && !isCameraOn && (
                             <div className="photo-preview">
-                                <p>Photo Preview (Saved Locally):</p>
-                                <img src={capturedPhoto} alt="Your captured photo" className="captured-photo-preview" />
-                                <button type="button" onClick={startCamera} className="camera-button retake-button">
-                                    Retake Photo
+                                <p>Face Photo Captured:</p>
+                                <img src={capturedPhoto} alt="Your captured face" className="captured-photo-preview" />
+                                <button
+                                    type="button"
+                                    onClick={startCamera}
+                                    className="camera-button retake-button"
+                                    disabled={!detectorReady} // Use hook state
+                                >
+                                    {detectorReady ? 'Retake Photo' : 'Loading Detector...'}
                                 </button>
                             </div>
                         )}
@@ -940,176 +1277,6 @@ useEffect(() => {
         </div> // End form-container
     );
 
-    // return (
-    //     <div className="form-container">
-            // {/* Instructions Popup */}
-            // {showInstructions && (
-            //     <div className="popup-overlay">
-            //         <div className="popup">
-            //             <h2>Instructions</h2>
-            //             <p>Please follow these rules during the test:</p>
-            //             <div className="instructions-list">
-            //                 <p>You will have <strong>10 minutes</strong> to complete the test.</p>
-            //                 <p>Ensure you complete the test within the time limit shown in the top-right corner.</p>
-            //                 <p>During the test, <strong>do not</strong> perform any of the following actions:</p>
-            //                 <ul>
-            //                     <li>Switch to another application or program.</li>
-            //                     <li>Switch to another browser tab or window.</li>
-            //                     <li>Minimize the browser window.</li>
-            //                     <li>Turn off your screen or let your computer go to sleep.</li>
-            //                     <li>Interact with notifications (e.g., clicking on them).</li>
-            //                     <li>Disconnect from the internet or lose network connectivity.</li>
-            //                     <li>Close the browser or refresh the page.</li>
-            //                 </ul>
-            //                 <p>If you perform any of the above actions:</p>
-            //                 <ul>
-            //                     <li>You will receive a warning on the first violation.</li>
-            //                     <li>On the second violation, you will be disqualified, and access to the test will be blocked.</li>
-            //                 </ul>
-            //                 <p>Click agree below to confirm that you understand these instructions.</p>
-            //             </div>
-            //             <button className="agree-button" onClick={requestScreenCapture}>
-            //                 I Agree
-            //             </button>
-            //         </div>
-            //     </div>
-            // )}
-
-    //         {/* Permission Error Dialog */}
-    //         {showPermissionError && (
-    //             <div className="popup-overlay">
-    //                 <div className="popup">
-    //                     <h2>Permission Denied</h2>
-    //                     <p>You have denied screen-sharing permission. You cannot start the test without sharing your screen.</p>
-    //                     <button
-    //                         className="close-button"
-    //                         onClick={() => setShowPermissionError(false)} // Close the error dialog
-    //                     >
-    //                         Close
-    //                     </button>
-    //                 </div>
-    //             </div>
-    //         )}
-
-    //         {/* Warning Popup */}
-    //         {showWarning && (
-    //             <div className="popup-overlay">
-    //                 <div className="popup">
-    //                     <h2>Warning</h2>
-    //                     <p>You have violated the test rules. Please do not switch tabs or minimize the browser again.</p>
-    //                     <button
-    //                         className="close-button"
-    //                         onClick={() => {
-    //                             setShowWarning(false); // Close the warning popup
-    //                             if (isScreenSharingStopped) {
-    //                                 requestScreenCapture(); // Restart screen sharing only if the warning is due to screen sharing being stopped
-    //                                 setIsScreenSharingStopped(false); // Reset the flag
-    //                             }
-    //                         }}
-    //                     >
-    //                         Close
-    //                     </button>
-    //                 </div>
-    //             </div>
-    //         )}
-
-    //         {/* Google Form Page */}
-    //         {submitted ? (
-    //             googleFormBlocked ? (
-    //                 <div className="blocked-message">
-    //                     <h2>{isTimeOver ? 'Time Over' : 'Access to the Google Form has been blocked!'}</h2>
-    //                     <p>
-    //                         {isTimeOver
-    //                             ? 'Your time is over. Please try again later.'
-    //                             : 'You moved away from the page or stopped screen sharing. Please refresh to try again.'}
-    //                     </p>
-    //                 </div>
-    //             ) : (
-    //                 <div className="success-message">
-    //                     <div className="google-form-container" ref={googleFormRef}>
-                            // <div className="timer-container">
-                            //     <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{timer % 60}</p>
-                            // </div>
-                            // <div className="camera-feed">
-                            //     <div className="camera-box">
-                            //         {cameraError && <p className="error-message camera-error">{cameraError}</p>}
-                            //         <video
-                            //             ref={videoRef}
-                            //             autoPlay
-                            //             playsInline
-                            //             muted
-                            //             className={`camera-video ${cameraError ? 'hidden' : ''}`} // Hide video element on error
-                            //         ></video>
-                            //         {/* Optional: Show loading state while camera starts and stream is not yet ready */}
-                            //         {isCameraOn && !streamRef.current && !cameraError && <p className="camera-loading">Starting camera...</p>}
-                            //         {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
-                            //     </div>
-                            // </div>
-    //                         <iframe
-    //                             src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
-    //                             className="google-form-iframe"
-    //                             title="Google Form"
-    //                         >
-    //                             Loading…
-    //                         </iframe>
-    //                         {/* Display the number of violations for debugging or user information */}
-    //                         <p className="violations-info">Violations: {violations}</p>
-    //                     </div>
-    //                 </div>
-    //             )
-    //         ) : (
-    //             // Details Form Page
-    //             <form className="form-card" onSubmit={handleSubmit}>
-    //                 <h2>Submit Your Details</h2>
-    //                 <div className="form-group">
-    //                     <label htmlFor="name">Name:</label>
-    //                     <input
-    //                         type="text"
-    //                         id="name" // Add id
-    //                         value={name}
-    //                         onChange={(e) => setName(e.target.value)}
-    //                         onBlur={() => checkFieldExists('name', name, setNameError)} // Validate name on blur
-    //                         required
-    //                     />
-    //                     {nameError && <p className={`error-message ${nameError ? 'visible' : ''}`}>{nameError || ''}</p>}
-    //                 </div>
-    //                 <div className="form-group">
-    //                     <label htmlFor="email">Email:</label>
-    //                     <input
-    //                         type="email"
-    //                         id="email" // Add id
-    //                         value={email}
-    //                         onChange={(e) => setEmail(e.target.value)}
-    //                         onBlur={() => {
-    //                             checkFieldExists('email', email, setEmailError);
-    //                             validateEmail(email);
-    //                         }} // Validate email on blur
-    //                         required
-    //                     />
-    //                     {emailError && <p className={`error-message ${emailError ? 'visible' : ''}`}>{emailError || ''}</p>}
-    //                 </div>
-    //                 <div className="form-group">
-    //                     <label htmlFor="phone">Phone Number:</label>
-    //                     <input
-    //                         type="tel"
-    //                         id="phone" // Add id
-    //                         value={phone}
-    //                         onChange={(e) => setPhone(e.target.value)}
-    //                         onBlur={() => {checkFieldExists('phone', phone, setPhoneError);
-    //                         validatePhone(phone);
-    //                         }} // Validate phone on blur
-    //                         required
-    //                     />
-    //                     {phoneError && <p className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError || ''}</p>}
-    //                 </div>
-    //                 {error && <p className="error-message">{error}</p>}
-    //                 <button type="submit" className="submit-button">
-    //                     Submit
-    //                 </button>
-    //             </form>
-    //         )}
-    //     </div>
-    // );
 };
 
 export default Form;
