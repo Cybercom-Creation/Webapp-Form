@@ -1,8 +1,8 @@
 const path = require('path');
 const fs = require('fs');
-const envPath = path.resolve(__dirname, '.env');
+// const envPath = path.resolve(__dirname, '.env');
 
-require('dotenv').config({ path: envPath });
+// require('dotenv').config({ path: envPath });
 
 const caPath = path.resolve(__dirname, 'ca.pem');
 
@@ -25,7 +25,7 @@ try {
 
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
+    port: process.env.DB_PORT,
     user: process.env.DB_USER,
     password:process.env.DB_PASSWORD,
     database: process.env.DB_NAME,

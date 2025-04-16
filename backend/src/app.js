@@ -1,17 +1,15 @@
+require('dotenv').config();
+const db = require('./utils/db');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors'); // Import CORS
 const fs = require('fs'); // File system module for saving files
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
-const db = require('./utils/db'); // Adjust path as needed
-const envPath = path.resolve(__dirname, '.env');
-
-require('dotenv').config({ path: envPath });
- 
+// const envPath = path.resolve(__dirname, '.env');
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 12802;
 
 app.use(cors()); // Enable CORS
 
