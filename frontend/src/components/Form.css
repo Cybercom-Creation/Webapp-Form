@@ -444,3 +444,116 @@ body {
         transform: translateY(0);
     }
 }
+
+.camera-feed {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.camera-video {
+    width: 300px;
+    height: 200px;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    background-color: #000;
+    object-fit: cover;
+}
+
+.camera-video-feed {
+    display: block; /* Ensure it's not inline */
+    width: 100%;    /* Or a fixed width */
+    max-width: 400px; /* Example max width */
+    height: auto;   /* Maintain aspect ratio */
+    border: 1px solid lightgray; /* Add border for visibility */
+    background-color: #222; /* Dark background while loading */
+    transform: scaleX(-1); /* Apply mirroring via CSS */
+  }
+  .photo-preview {
+    margin-top: 15px; /* Add some space above the preview */
+    text-align: center; /* Center the preview elements */
+  }
+ 
+  .captured-photo-preview {
+    display: block; /* Make it a block element for centering */
+    max-width: 100%; /* Ensure it doesn't overflow its container */
+    height: auto;    /* Maintain aspect ratio */
+    max-height: 200px; /* << ADJUST THIS VALUE as needed */
+    border: 1px solid #ccc;
+    margin: 10px auto; /* Add some margin and center horizontally */
+    transform: scaleX(-1); /* Mirror the preview like the video feed */
+  }
+ 
+  /* Container for camera action buttons */
+.camera-controls {
+    display: flex; /* Use flexbox to easily manage button layout */
+    justify-content: center; /* Center the buttons horizontally */
+    gap: 15px; /* This adds space *between* the flex items (buttons) */
+    margin-top: 15px; /* Adds space above the button group */
+    margin-bottom: 10px; /* Adds space below the button group */
+  }
+ 
+  /* General styling for all camera-related buttons */
+  .camera-button {
+    padding: 10px 18px; /* Add padding inside the buttons: 10px top/bottom, 18px left/right */
+    border: none;
+    border-radius: 6px; /* Slightly rounded corners */
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500; /* Make text slightly bolder */
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    /* Removed individual margins as 'gap' handles spacing between them */
+  }
+ 
+  /* Specific styling for capture button */
+  .capture-button {
+    background-color: #28a745; /* Green */
+    color: white;
+  }
+  .capture-button:hover:not(:disabled) { /* Only apply hover when not disabled */
+    background-color: #218838; /* Darker green */
+  }
+  .capture-button:disabled {
+      background-color: #cccccc; /* Grey out when disabled */
+      color: #666666;
+      cursor: not-allowed;
+  }
+ 
+ 
+  /* Specific styling for cancel/stop button */
+  .cancel-button {
+    background-color: #dc3545; /* Red */
+    color: white;
+  }
+  .cancel-button:hover {
+    background-color: #c82333; /* Darker red */
+  }
+ 
+  /* Add a subtle press effect */
+  .camera-button:active:not(:disabled) {
+      transform: scale(0.98); /* Slightly shrink button when clicked */
+  }
+ 
+  /* You might already have a .retake-button style, ensure it also gets padding */
+  .retake-button {
+      /* Inherit general camera button styles or define specific ones */
+      padding: 10px 18px;
+      margin-top: 10px; /* Keep margin-top if needed */
+      background-color: #ffc107; /* Example: Amber color */
+      color: #333;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+  }
+  .retake-button:hover {
+      background-color: #e0a800;
+  }
+  .retake-button:active {
+      transform: scale(0.98);
+  }

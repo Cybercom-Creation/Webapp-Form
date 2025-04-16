@@ -4,11 +4,11 @@ class UserController {
     constructor(db) {
         this.db = db;
     }
-
+ 
      // Refactored createUser method
      async createUser(userData) { // Accepts user data object
         const { name, email, phone } = userData; // Destructure from the input object
-
+ 
         // --- Input Validation ---
         if (!name || !email || !phone) {
             // Throw an error instead of sending response
@@ -16,7 +16,7 @@ class UserController {
             error.statusCode = 400; // Add status code for the route handler
             throw error;
         }
-
+ 
         // --- Check if User Exists ---
         const userExists = await this.checkUserExists(email);
         if (userExists) {
@@ -24,7 +24,7 @@ class UserController {
             error.statusCode = 409; // Conflict status
             throw error;
         }
-
+ 
         // --- Database Insertion ---
         // Use Promise wrapper for db.query if it doesn't return promises natively
         return new Promise((resolve, reject) => {
@@ -51,8 +51,8 @@ class UserController {
             });
         });
     }
-
-
+ 
+ 
     // checkUserExists remains the same (returns a Promise)
     async checkUserExists(email) {
         return new Promise((resolve, reject) => {

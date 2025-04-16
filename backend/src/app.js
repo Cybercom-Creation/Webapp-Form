@@ -4,8 +4,8 @@ const cors = require('cors'); // Import CORS
 const fs = require('fs'); // File system module for saving files
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
-// Assuming you have database connection logic (e.g., db.js or similar)
 const db = require('./utils/db'); // Adjust path as needed
+ 
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,27 +18,27 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' })); // Increase l
 
 // --- NEW ENDPOINT for Proctoring Logs ---
 app.post('/api/proctoring-logs', async (req, res) => {
-    const { userId, triggerEvent, violationCount, startTime, endTime } = req.body;
-
+    const { userId, triggerEvent, startTime, endTime } = req.body;
+ 
     // Basic Validation
-    if (!userId || !triggerEvent || violationCount == null || !startTime || !endTime) {
+    if (!userId || !triggerEvent || !startTime || !endTime) {
         return res.status(400).json({ message: 'Missing required log data fields.' });
     }
-
+ 
     try {
         // Convert JS timestamps (milliseconds) to SQL DATETIME format
         const startDateTime = new Date(startTime).toISOString().slice(0, 19).replace('T', ' ');
         const endDateTime = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
-
+ 
         const sql = `
             INSERT INTO proctoring_logs
-            (user_id, trigger_event, violation_count_at_event, warning_start_time, warning_end_time)
-            VALUES (?, ?, ?, ?, ?)
+            (user_id, trigger_event, warning_start_time, warning_end_time)
+            VALUES (?, ?, ?, ?)
         `;
-
+ 
         // --- Wrap db.query in a Promise if it's callback-based ---
         await new Promise((resolve, reject) => {
-            db.query(sql, [userId, triggerEvent, violationCount, startDateTime, endDateTime], (error, results) => {
+            db.query(sql, [userId, triggerEvent, startDateTime, endDateTime], (error, results) => {
                 if (error) {
                     // Reject the promise with the database error
                     return reject(error); // Pass the actual error object
@@ -48,10 +48,10 @@ app.post('/api/proctoring-logs', async (req, res) => {
             });
         });
         // --- End Promise Wrapper ---
-
-        console.log(`Proctoring log saved for user ${userId}, event: ${triggerEvent}`);
+ 
+        console.log(`Proctoring log saved for users ${userId}, event: ${triggerEvent}`);
         res.status(201).json({ message: 'Proctoring log saved successfully.' });
-
+ 
     } catch (error) {
         // This catch block will now receive errors from the Promise reject
         console.error('Error saving proctoring log:', error); // Log the actual DB error
