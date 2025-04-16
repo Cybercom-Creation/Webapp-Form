@@ -4,38 +4,65 @@ class UserController {
     constructor(db) {
         this.db = db;
     }
-
-    async createUser(req, res) {
-        const { name, email, phone } = req.body;
-
+ 
+     // Refactored createUser method
+     async createUser(userData) { // Accepts user data object
+        const { name, email, phone } = userData; // Destructure from the input object
+ 
+        // --- Input Validation ---
         if (!name || !email || !phone) {
-            return res.status(400).json({ message: 'All fields are required.' });
+            // Throw an error instead of sending response
+            const error = new Error('All fields (name, email, phone) are required.');
+            error.statusCode = 400; // Add status code for the route handler
+            throw error;
         }
-
-        try {
-            const userExists = await this.checkUserExists(email);
-            if (userExists) {
-                return res.status(409).json({ message: 'User already exists.' });
-            }
-
-            const query = 'INSERT INTO user (name, email, phone) VALUES (?, ?, ?)';
+ 
+        // --- Check if User Exists ---
+        const userExists = await this.checkUserExists(email);
+        if (userExists) {
+            const error = new Error('User with this email already exists.');
+            error.statusCode = 409; // Conflict status
+            throw error;
+        }
+ 
+        // --- Database Insertion ---
+        // Use Promise wrapper for db.query if it doesn't return promises natively
+        return new Promise((resolve, reject) => {
+            const query = 'INSERT INTO users (name, email, phone) VALUES (?, ?, ?)';
             this.db.query(query, [name, email, phone], (error, results) => {
                 if (error) {
-                    return res.status(500).json({ message: 'Database error: ' + error.message });
+                    console.error('Database error during user creation:', error);
+                    // Create a generic server error
+                    const dbError = new Error('Database error during user creation.');
+                    dbError.statusCode = 500;
+                    return reject(dbError);
                 }
-                res.status(201).json({ message: 'User created successfully.', userId: results.insertId });
+                // Check if insertId is available
+                if (results && results.insertId) {
+                    // Resolve with the newly created user object (or just the ID)
+                    resolve({ id: results.insertId, name, email, phone });
+                } else {
+                    // Handle case where insertion might succeed but ID isn't returned
+                    console.error('User created, but insertId not found in results.');
+                    const idError = new Error('User created, but failed to retrieve ID.');
+                    idError.statusCode = 500; // Treat as server error
+                    reject(idError);
+                }
             });
-        } catch (error) {
-            res.status(500).json({ message: 'Server error: ' + error.message });
-        }
+        });
     }
-
+ 
+ 
+    // checkUserExists remains the same (returns a Promise)
     async checkUserExists(email) {
         return new Promise((resolve, reject) => {
-            const query = 'SELECT * FROM user WHERE email = ?';
+            const query = 'SELECT * FROM users WHERE email = ?';
             this.db.query(query, [email], (error, results) => {
                 if (error) {
-                    return reject(error);
+                    // Reject with a proper error object
+                    const dbError = new Error('Database error checking user existence.');
+                    dbError.statusCode = 500;
+                    return reject(dbError);
                 }
                 resolve(results.length > 0);
             });
