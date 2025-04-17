@@ -1,5 +1,5 @@
 require('dotenv').config();
-const db = require('./utils/db');
+const pool = require('./utils/db');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors'); // Import CORS
@@ -29,6 +29,17 @@ app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
 app.use((req, res, next) => {
     console.log('Origin:', req.headers.origin);
     next();
+  });
+  
+
+  app.get('/ping-db', async (req, res) => {
+    try {
+      const [rows] = await pool.query('SELECT 1');
+      res.json({ success: true, rows });
+    } catch (error) {
+      console.error('Ping DB error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
   
 
