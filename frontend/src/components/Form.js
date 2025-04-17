@@ -16,7 +16,7 @@ const Form = () => {
      const [emailError, setEmailError] = useState('');
      const [phoneError, setPhoneError] = useState('');
      const [cameraError, setCameraError] = useState(''); // <-- Add camera error state
-     const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false); // State for persistent error
+    //  const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false); // State for persistent error
   
      // --- State for Camera ---
      const [cameraStream, setCameraStream] = useState(null); // <-- Add camera stream state
@@ -718,7 +718,7 @@ useEffect(() => {
                         {capturedPhoto && !isCameraOn && ( // Show preview only if captured and camera is off
                             <div className="photo-preview">
                                 <p>Photo Preview (Saved Locally):</p>
-                                <img src={capturedPhoto} alt="Your captured photo" className="captured-photo-preview" />
+                                <img src={capturedPhoto} alt="You captured" className="captured-photo-preview" />
                                 <button type="button" onClick={startCamera} className="camera-button retake-button">
                                     Retake Photo
                                 </button>
@@ -742,7 +742,7 @@ useEffect(() => {
                     // --- Time Over Popup ---
                     // This state is handled by the popup rendering below
                     null // Render nothing here, popup handles display
-                ) : showScreenShareRequiredError ? (
+                ) : isScreenSharingStopped ? (
                     // --- Persistent Screen Share Error Popup ---
                     // This state is handled by the popup rendering below
                     null // Render nothing here, popup handles display
@@ -881,7 +881,7 @@ useEffect(() => {
              )}
      
             {/* Persistent Screen Share Required Error Popup */}
-            {showScreenShareRequiredError && (
+            {isScreenSharingStopped && (
                 <div className="popup-overlay">
                     {/* {console.log("RENDERING: Persistent Screen Share Error Popup")} */}
                     <div className="popup">
