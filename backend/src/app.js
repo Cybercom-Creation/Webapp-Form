@@ -11,13 +11,21 @@ const userRoutes = require('./routes/userRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.options('*', cors());
+app.use(cors());
 
 // app.use(cors({
 //     origin: 'https://webapp-form-frontend.onrender.com/', // your frontend
 //     methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
 //     credentials: true
 //   }));
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', 'https://webapp-form-frontend.onrender.com');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    next();
+  });
+  
 
 // Configure body-parser with a larger limit
 app.use(bodyParser.json({ limit: '10mb' })); // Increase limit for JSON payloads
