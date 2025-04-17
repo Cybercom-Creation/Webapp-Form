@@ -6,7 +6,7 @@ require('dotenv').config({ path: envPath });
 
 const caPath = path.resolve(__dirname, 'ca.pem');
 
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 
 // --- Read the CA certificate file ---
 let sslConfig;
@@ -23,7 +23,7 @@ try {
     sslConfig = { rejectUnauthorized: true }; // Attempt connection without custom CA (will likely fail as before)
 }
 
-const db = mysql.createConnection({
+const pool  = mysql.createPool({
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     user: process.env.DB_USER,
@@ -31,15 +31,18 @@ const db = mysql.createConnection({
     database: process.env.DB_NAME,
     ssl: {
         rejectUnauthorized: false
-      }
+    },
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-db.connect((err) => {
-    if (err) {
-        console.error('Database connection failed: ' + err.stack);
-        return;
-    }
-    console.log('Connected to database.');
-});
+// db.connect((err) => {
+//     if (err) {
+//         console.error('Database connection failed: ' + err.stack);
+//         return;
+//     }
+//     console.log('Connected to database.');
+// });
 
-module.exports = db;
+module.exports = pool;
