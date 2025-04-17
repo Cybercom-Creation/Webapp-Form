@@ -21,15 +21,15 @@ app.use(cors({
     origin: 'https://webapp-form-frontend.onrender.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true // Optional unless using cookies
+    // credentials: true // Optional unless using cookies
 }));
 
-app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
+// app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
 
-app.use((req, res, next) => {
-    console.log('Origin:', req.headers.origin);
-    next();
-  });
+// app.use((req, res, next) => {
+//     console.log('Origin:', req.headers.origin);
+//     next();
+//   });
   
 
   app.get('/ping-db', async (req, res) => {

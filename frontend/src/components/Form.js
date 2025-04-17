@@ -322,7 +322,10 @@ const capturePhoto = () => {
 
         try {
             const response = await fetch('https://webapp-form.onrender.com/api/users', {
-                method: 'POST',     
+                method: 'POST', 
+                withCredentials: true,           
+                crossorigin: true,           
+                mode: 'no-cors',    
                 headers: {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
@@ -416,6 +419,9 @@ const sendProctoringLog = async (logData) => {
         try {
             const response = await fetch('https://webapp-form.onrender.com/api/users/check-field', {
                 method: 'POST',
+                withCredentials: true,           
+                crossorigin: true,           
+                mode: 'no-cors',
                 headers: {
                     'Content-Type': 'application/json',
                 },
