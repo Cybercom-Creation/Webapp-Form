@@ -6,7 +6,7 @@ require('dotenv').config({ path: envPath });
 
 const caPath = path.resolve(__dirname, 'ca.pem');
 
-const mysql = require('mysql2/promise');
+const mysql = require('mysql2');
 
 // --- Read the CA certificate file ---
 let sslConfig;
@@ -35,6 +35,8 @@ const pool  = mysql.createPool({
     queueLimit: 0
 });
 
+const db = pool.promise();
+
 // db.connect((err) => {
 //     if (err) {
 //         console.error('Database connection failed: ' + err.stack);
@@ -43,4 +45,4 @@ const pool  = mysql.createPool({
 //     console.log('Connected to database.');
 // });
 
-module.exports = pool;
+module.exports = db;

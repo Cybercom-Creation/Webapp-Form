@@ -32,17 +32,6 @@ app.use(cors({
 //   });
   
 
-  app.get('/ping-db', async (req, res) => {
-    try {
-      const [rows] = await pool.query('SELECT 1');
-      res.json({ success: true, rows });
-    } catch (error) {
-      console.error('Ping DB error:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-  
-
 // Configure body-parser with a larger limit
 app.use(bodyParser.json({ limit: '10mb' })); // Increase limit for JSON payloads
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' })); // Increase limit for URL-encoded payloads
@@ -68,16 +57,8 @@ app.post('/api/proctoring-logs', async (req, res) => {
         `;
  
         // --- Wrap db.query in a Promise if it's callback-based ---
-        await new Promise((resolve, reject) => {
-            db.query(sql, [userId, triggerEvent, startDateTime, endDateTime], (error, results) => {
-                if (error) {
-                    // Reject the promise with the database error
-                    return reject(error); // Pass the actual error object
-                }
-                // Resolve the promise on successful insertion
-                resolve(results);
-            });
-        });
+        await db.query(sql, [userId, triggerEvent, startDateTime, endDateTime]);
+
         // --- End Promise Wrapper ---
  
         console.log(`Proctoring log saved for users ${userId}, event: ${triggerEvent}`);

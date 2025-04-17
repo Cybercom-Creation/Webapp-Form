@@ -31,19 +31,17 @@ router.post('/check-field', async (req, res) => {
     }
 
     try {
-        const query = `SELECT * FROM users WHERE ${field} = ?`;
-        db.query(query, [value], (err, results) => {
-            if (err) {
-                return res.status(500).json({ message: 'Database error: ' + err.message });
-            }
-            if (results.length > 0) {
-                return res.status(409).json({ message: `${field} already exists.` });
-            }
-            res.status(200).json({ message: `${field} is available.` });
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error: ' + error.message });
-    }
+        const [results] = await db.query(query, [value]);
+      
+        if (results.length > 0) {
+          return res.status(409).json({ message: `${field} already exists.` });
+        }
+      
+        res.status(200).json({ message: `${field} is available.` });
+      } catch (err) {
+        return res.status(500).json({ message: 'Database error: ' + err.message });
+      }
+    
 });
 
 module.exports = router;
