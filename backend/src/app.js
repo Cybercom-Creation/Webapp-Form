@@ -6,10 +6,14 @@ const cors = require('cors'); // Import CORS
 const fs = require('fs'); // File system module for saving files
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
+const morgan = require('morgan');
 // const envPath = path.resolve(__dirname, '.env');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+
+app.use(morgan('dev'));
 
 // app.use(cors());
 
