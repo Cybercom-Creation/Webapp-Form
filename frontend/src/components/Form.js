@@ -410,34 +410,73 @@ const sendProctoringLog = async (logData) => {
     }
 };
 
-    const checkFieldExists = async (field, value, setErrorCallback) => {
-        if (!value) {
-            setErrorCallback(`${field.charAt(0).toUpperCase() + field.slice(1)} is required.`);
-            return;
-        }
+const checkFieldExists = async (field, value, setErrorCallback) => {
+    // Keep frontend validation (empty check, format checks)
+    if (!value) {
+        // Decide if empty field is an "error" or just clears previous errors
+        // setErrorCallback(`${field.charAt(0).toUpperCase() + field.slice(1)} is required.`);
+        setErrorCallback(''); // Clear error if field is empty
+        return;
+    }
+    // Add format validation back if needed (or rely on backend)
+    // Example:
+    // if (field === 'email' && !validateEmail(value)) {
+    //      setErrorCallback('Please enter a valid email address.');
+    //      return;
+    // }
 
-        try {
-            const response = await fetch('https://webapp-form.onrender.com/api/users/check-field', {
-                method: 'POST',
-                withCredentials: true,           
-                crossorigin: true,           
-                mode: 'no-cors',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ field, value }),
-            });
+    setErrorCallback('Checking availability...'); // Indicate checking status
 
-            if (!response.ok) {
-                const data = await response.json();
-                setErrorCallback(data.message); // Set error if the field already exists
-            } else {
-                setErrorCallback(''); // Clear the error if the field is available
+    try {
+        // --- CORRECTED FETCH CALL (around line 420) ---
+        const response = await fetch('https://webapp-form.onrender.com/api/users/check-field', {
+            method: 'POST',
+            // REMOVED: mode: 'no-cors',
+            // REMOVED: crossorigin: true,
+            // REMOVED: withCredentials: true,
+            headers: {
+                'Content-Type': 'application/json',
+                // DO NOT set 'Access-Control-Allow-Origin' here - the SERVER sets it
+            },
+            body: JSON.stringify({ field, value }), // Ensure field and value are correctly passed
+        });
+        // --- END CORRECTED FETCH CALL ---
+
+
+        // Check if the response status code indicates success (2xx)
+        if (response.ok) { // .ok is true for status codes 200-299
+            // Field is available (Backend should return 200 OK)
+            setErrorCallback(''); // Clear any previous error message
+            console.log(`Check successful: ${field} is available.`);
+        } else {
+            // Handle specific errors (409 Conflict, 400 Bad Request, 500 Server Error)
+            let errorMessage = `Error checking ${field}. Status: ${response.status}`;
+            try {
+                // Attempt to parse the error message from the backend response body
+                const errorData = await response.json(); // Now this works!
+                errorMessage = errorData.message || errorMessage; // Use backend message if available
+            } catch (e) {
+                // If response body is not JSON or empty
+                console.warn("Could not parse error response as JSON.", e);
+                // Optionally try response.text() as a fallback
+                // const errorText = await response.text();
+                // errorMessage = errorText || errorMessage;
             }
-        } catch (err) {
-            setErrorCallback('Error checking field availability.');
+            console.error(`Check failed for ${field}: ${errorMessage}`);
+            setErrorCallback(errorMessage); // Set the specific error message from the backend
         }
-    };
+    } catch (err) {
+        // Handle network errors (fetch couldn't reach the server, DNS issues, etc.)
+        console.error('Network error during checkFieldExists:', err);
+        // Check if it's a TypeError, often related to CORS or network issues before response is received
+        if (err instanceof TypeError) {
+             setErrorCallback('Network or CORS error. Check browser console and ensure backend CORS is configured correctly for https://webapp-form-frontend.onrender.com.');
+        } else {
+             setErrorCallback('Network error. Unable to check field availability.');
+        }
+    }
+};
+
 
         // Handle visibility changes
 useEffect(() => {

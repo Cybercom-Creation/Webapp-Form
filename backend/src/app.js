@@ -80,6 +80,16 @@ app.post('/api/proctoring-logs', async (req, res) => {
 // User routes
 app.use('/api/users', userRoutes);
 
+app.use((err, req, res, next) => {
+    console.error("Central Error Handler:", err.stack); // Log the full error stack
+    const statusCode = err.statusCode || 500; // Use status code from error if available
+    res.status(statusCode).json({
+      message: err.message || 'An unexpected server error occurred.',
+      // Optionally add more details in development
+      // error: process.env.NODE_ENV === 'development' ? err : {}
+    });
+  });
+
 // Endpoint to save screenshots
 app.post('/api/screenshots', (req, res) => {
     const { screenshot } = req.body;
