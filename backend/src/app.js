@@ -11,20 +11,14 @@ const userRoutes = require('./routes/userRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// app.use(cors());
 
-// app.use(cors({
-//     origin: 'https://webapp-form-frontend.onrender.com/', // your frontend
-//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
-//     credentials: true
-//   }));
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'https://webapp-form-frontend.onrender.com');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    next();
-  });
+app.use(cors({
+    origin: 'https://webapp-form-frontend.onrender.com',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+  }));
   
 
 // Configure body-parser with a larger limit
