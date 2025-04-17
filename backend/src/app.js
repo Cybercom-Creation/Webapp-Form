@@ -90,6 +90,18 @@ app.use((err, req, res, next) => {
     });
   });
 
+  app.get('/api/db-test', async (req, res, next) => {
+    try {
+        const [results] = await db.query('SELECT 1 as test');
+        res.status(200).json({ message: 'Database connection successful!', results: results });
+    } catch (error) {
+        console.error("DB Test Error:", error);
+        res.status(500).json({ message: 'Database connection failed!', error: error.message });
+        // Or use next(error) if you want the central handler
+    }
+});
+
+
 // Endpoint to save screenshots
 app.post('/api/screenshots', (req, res) => {
     const { screenshot } = req.body;
