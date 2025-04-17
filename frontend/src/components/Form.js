@@ -428,7 +428,7 @@ const sendProctoringLog = async (logData) => {
                 body: JSON.stringify({ field, value }),
             });
 
-            if (response.status === 409) {
+            if (!response.ok) {
                 const data = await response.json();
                 setErrorCallback(data.message); // Set error if the field already exists
             } else {
