@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 
-app.use(morgan('dev'));
+// app.use(morgan('dev'));
 
 // app.use(cors());
 
@@ -21,8 +21,15 @@ app.use(cors({
     origin: 'https://webapp-form-frontend.onrender.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-  }));
+    credentials: true // Optional unless using cookies
+}));
+
+app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
+
+app.use((req, res, next) => {
+    console.log('Origin:', req.headers.origin);
+    next();
+  });
   
 
 // Configure body-parser with a larger limit
