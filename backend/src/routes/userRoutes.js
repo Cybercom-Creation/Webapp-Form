@@ -24,7 +24,8 @@ router.post('/', async (req, res) => {
     }
 });
 router.post('/check-field', async (req, res) => {
-    const { field, value } = req.body;
+    // ... (keep existing implementation) ...
+     const { field, value } = req.body;
 
     if (!field || !value) {
         return res.status(400).json({ message: 'Field and value are required.' });
@@ -42,7 +43,9 @@ router.post('/check-field', async (req, res) => {
             res.status(200).json({ message: `${field} is available.` });
         });
     } catch (error) {
-        res.status(500).json({ message: 'Server error: ' + error.message });
+         console.error(`Error in POST /api/users/check-field route:`, error);
+         const statusCode = error.statusCode || 500;
+         res.status(statusCode).json({ message: error.message || `Error checking ${field}.` });
     }
 });
 

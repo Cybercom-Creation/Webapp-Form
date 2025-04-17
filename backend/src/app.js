@@ -19,54 +19,58 @@ app.use(cors()); // Enable CORS
 app.use(bodyParser.json({ limit: '10mb' })); // Increase limit for JSON payloads
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' })); // Increase limit for URL-encoded payloads
 
-// --- NEW ENDPOINT for Proctoring Logs ---
+// --- New Endpoint for Proctoring Logs ---
 app.post('/api/proctoring-logs', async (req, res) => {
+    // Remove violationCount from destructuring
     const { userId, triggerEvent, startTime, endTime } = req.body;
- 
-    // Basic Validation
+
+    // Basic Validation (remove violationCount check)
     if (!userId || !triggerEvent || !startTime || !endTime) {
-        return res.status(400).json({ message: 'Missing required log data fields.' });
+        return res.status(400).json({ message: 'Missing required log data fields (userId, triggerEvent, startTime, endTime).' });
     }
- 
+
     try {
         // Convert JS timestamps (milliseconds) to SQL DATETIME format
         const startDateTime = new Date(startTime).toISOString().slice(0, 19).replace('T', ' ');
         const endDateTime = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
- 
+
+        // --- Calculate interval in seconds ---
+        const intervalMs = endTime - startTime;
+        const intervalSeconds = Math.round(intervalMs / 1000); // Calculate duration
+        // --- End Calculation ---
+
+
+        // --- Update SQL Query ---
         const sql = `
             INSERT INTO proctoring_logs
-            (user_id, trigger_event, warning_start_time, warning_end_time)
-            VALUES (?, ?, ?, ?)
+            (user_id, trigger_event, warning_start_time, warning_end_time, interval_seconds)
+            VALUES (?, ?, ?, ?, ?)
         `;
- 
-        // --- Wrap db.query in a Promise if it's callback-based ---
+        // --- End Update SQL Query ---
+
         await new Promise((resolve, reject) => {
-            db.query(sql, [userId, triggerEvent, startDateTime, endDateTime], (error, results) => {
+            // --- Update Parameters ---
+            db.query(sql, [userId, triggerEvent, startDateTime, endDateTime, intervalSeconds], (error, results) => {
+            // --- End Update Parameters ---
                 if (error) {
-                    // Reject the promise with the database error
-                    return reject(error); // Pass the actual error object
+                    return reject(error);
                 }
-                // Resolve the promise on successful insertion
                 resolve(results);
             });
         });
-        // --- End Promise Wrapper ---
- 
-        console.log(`Proctoring log saved for users ${userId}, event: ${triggerEvent}`);
+
+        console.log(`Proctoring log saved for user ${userId}, event: ${triggerEvent}, interval: ${intervalSeconds}s`); // Updated log
         res.status(201).json({ message: 'Proctoring log saved successfully.' });
- 
+
     } catch (error) {
-        // This catch block will now receive errors from the Promise reject
-        console.error('Error saving proctoring log:', error); // Log the actual DB error
+        console.error('Error saving proctoring log:', error);
         if (error.code === 'ER_NO_REFERENCED_ROW_2') {
              return res.status(400).json({ message: 'Invalid user ID provided.' });
         }
-        // Send a more specific error message if possible, otherwise generic
-        // Use error.message if available from the rejected promise
         res.status(500).json({ message: `Failed to save proctoring log: ${error.message || 'Unknown database error'}` });
     }
 });
-// --- End New Endpoint ---
+// --- End Endpoint ---
 
 // User routes
 app.use('/api/users', userRoutes);

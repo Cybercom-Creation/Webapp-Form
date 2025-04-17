@@ -71,24 +71,158 @@ body {
     outline: none;
 }
 
-/* Error message styling */
+/* Error message styling - CORRECTED */
 .error-message {
-    color: red;
-    font-size: 12px;
-    margin-top: 0px; /* Reduced space above the error message */
-    margin-bottom: 0;
-    height: 16px;
-    line-height: 0px;
-    visibility: hidden;
-    opacity: 0; 
-    transition: opacity 0.3s ease-in-out;
-    display: block; 
+    color: #dc3545; /* A standard Bootstrap danger red */
+    font-size: 0.8rem; /* Slightly smaller font size */
+    margin-top: 4px;   /* Add a small space above the error */
+    margin-bottom: 5px; /* Add some space below before the next element */
+    height: auto;      /* Let height adjust to content */
+    line-height: 1.2;  /* Set a normal line height */
+    visibility: hidden;/* Keep hidden by default */
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out, visibility 0s linear 0.3s; /* Delay visibility change */
+    display: inline-block;
+    min-height: 1em; /* Reserve a minimum space to prevent layout jumps */
 }
 
 .error-message.visible {
-    visibility: visible; /* Show the error message when it is active */
-    opacity: 1; /* Make the error message fully visible */
+    visibility: visible; /* Make it visible */
+    opacity: 1;
+    transition: opacity 0.3s ease-in-out, visibility 0s; /* Immediate visibility change */
 }
+.camera-live-container {
+    position: relative; /* <<< MUST BE PRESENT AND CORRECT */
+    display: inline-block; /* Or block */
+    /* ... other styles like border, width, overflow ... */
+    width: 400px; /* Keep fixed width for now if it helped */
+    max-width: 100%;
+    overflow: hidden; /* Good to keep */
+  }
+  
+  .camera-video-feed {
+     display: block;
+     width: 100%;
+     height: auto;
+     transform: scaleX(-1); /* Your mirroring */
+  }
+  
+  .detection-box-overlay {
+     position: absolute; /* Set via inline style, but ensure no conflicts */
+     box-sizing: border-box; /* Important */
+     pointer-events: none; /* Important */
+  }
+  /* Other relevant styles */
+  .camera-section {
+      /* Styles for the overall camera section */
+      margin-bottom: 15px;
+  }
+  
+  .camera-instructions,
+  .detection-status {
+      font-size: 0.9em;
+      color: #555;
+      margin-bottom: 5px;
+  }
+  
+  .detection-status {
+      font-style: italic;
+      min-height: 1.2em; /* Prevent layout shifts */
+  }
+  
+  .camera-controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+  }
+  .photo-preview {
+    margin-top: 15px; /* Add some space above the preview */
+    text-align: center; /* Center the preview elements */
+  }
+  
+  .captured-photo-preview {
+    display: block; /* Make it a block element for centering */
+    max-width: 100%; /* Ensure it doesn't overflow its container */
+    height: auto;    /* Maintain aspect ratio */
+    max-height: 200px; /* << ADJUST THIS VALUE as needed */
+    border: 1px solid #ccc;
+    margin: 10px auto; /* Add some margin and center horizontally */
+    transform: scaleX(-1); /* Mirror the preview like the video feed */
+  }
+  
+  /* Container for camera action buttons */
+.camera-controls {
+    display: flex; /* Use flexbox to easily manage button layout */
+    justify-content: center; /* Center the buttons horizontally */
+    gap: 15px; /* This adds space *between* the flex items (buttons) */
+    margin-top: 15px; /* Adds space above the button group */
+    margin-bottom: 10px; /* Adds space below the button group */
+  }
+  
+  /* General styling for all camera-related buttons */
+  .camera-button {
+    padding: 10px 18px; /* Add padding inside the buttons: 10px top/bottom, 18px left/right */
+    border: none;
+    border-radius: 6px; /* Slightly rounded corners */
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500; /* Make text slightly bolder */
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    /* Removed individual margins as 'gap' handles spacing between them */
+  }
+  
+  /* Specific styling for capture button */
+  .capture-button {
+    background-color: #28a745; /* Green */
+    color: white;
+  }
+  .capture-button:hover:not(:disabled) { /* Only apply hover when not disabled */
+    background-color: #218838; /* Darker green */
+  }
+  .capture-button:disabled {
+      background-color: #cccccc; /* Grey out when disabled */
+      color: #666666;
+      cursor: not-allowed;
+  }
+  
+  
+  /* Specific styling for cancel/stop button */
+  .cancel-button {
+    background-color: #dc3545; /* Red */
+    color: white;
+  }
+  .cancel-button:hover {
+    background-color: #c82333; /* Darker red */
+  }
+  
+  /* Add a subtle press effect */
+  .camera-button:active:not(:disabled) {
+      transform: scale(0.98); /* Slightly shrink button when clicked */
+  }
+  
+  /* You might already have a .retake-button style, ensure it also gets padding */
+  .retake-button {
+      /* Inherit general camera button styles or define specific ones */
+      padding: 10px 18px;
+      margin-top: 10px; /* Keep margin-top if needed */
+      background-color: #ffc107; /* Example: Amber color */
+      color: #333;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+  }
+  .retake-button:hover {
+      background-color: #e0a800;
+  }
+  .retake-button:active {
+      transform: scale(0.98);
+  }
+  
+
 
 @keyframes slideIn {
     from {
