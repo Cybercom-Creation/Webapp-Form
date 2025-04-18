@@ -64,14 +64,22 @@ const Form = () => {
 
     
     // --- Camera Control Functions ---
-    const startCamera = async () => {
-        console.log("Attempting to start camera...");
+    // Wrap startCamera in useCallback to stabilize its reference for useEffect
+    const startCamera = useCallback(async () => {
+        // Prevent starting if already processing or detector not ready
+        if (isCameraOn || !detectorReady) {
+             if (!detectorReady) console.log("[startCamera] Prevented: Detector not ready.");
+             if (isCameraOn) console.log("[startCamera] Prevented: Camera already considered on.");
+             return;
+        }
+        console.log("[startCamera] Attempting to start camera...");
         setCameraError('');
-        setCapturedPhoto(null); // Clear previous photo
-        setIsVideoReady(false);
-        setIsCameraOn(false);
+        setCapturedPhoto(null); // Clear previous photo when starting/retaking
+        setIsVideoReady(false); // Reset video readiness
 
+        // Stop existing stream if any (safety check)
         if (cameraStream) {
+            console.log("[startCamera] Stopping existing stream first.");
             cameraStream.getTracks().forEach(track => track.stop());
             setCameraStream(null);
         }
@@ -79,30 +87,29 @@ const Form = () => {
             videoRef.current.srcObject = null;
         }
 
-        // Check if the detector is ready (from the hook)
-        if (!detectorReady) {
-            setCameraError("Face detector is not ready yet. Please wait.");
-            return;
-        }
-
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user' }, // Prefer front camera
+                    video: { facingMode: 'user' },
                     audio: false
                 });
-                console.log("Camera stream obtained:", stream);
+                console.log("[startCamera] Camera stream obtained:", stream);
                 if (!stream.getVideoTracks().length) throw new Error("No video track available.");
-                setCameraStream(stream);
-                setIsCameraOn(true); // Hook will react to this
+                setCameraStream(stream); // Set the new stream
+                setIsCameraOn(true); // Mark camera as on (triggers stream assignment effect)
             } catch (err) {
-                // ... (keep existing camera error handling) ...
-                 console.error("Error accessing camera:", err);
+                 console.error("[startCamera] Error accessing camera:", err);
                  let userMessage = "Could not start camera.";
-                 // ... (error messages based on err.name) ...
+                 if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+                    userMessage = "Camera permission denied. Please allow camera access in your browser settings and refresh.";
+                 } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                    userMessage = "No camera found. Please ensure a camera is connected and enabled.";
+                 } else {
+                    userMessage = `Could not start camera: ${err.message}`;
+                 }
                  setCameraError(userMessage);
                  setCameraStream(null);
-                 setIsCameraOn(false);
+                 setIsCameraOn(false); // Ensure camera is marked off on error
                  setIsVideoReady(false);
             }
         } else {
@@ -110,25 +117,57 @@ const Form = () => {
             setIsCameraOn(false);
             setIsVideoReady(false);
         }
-    };
+    }, [detectorReady, isCameraOn, cameraStream]); // Dependencies for useCallback
+
+
+
+
+    // stopCamera is now primarily used only after successful capture
     const stopCamera = useCallback(() => {
-        console.log("Stopping camera...");
+        console.log("[stopCamera] Stopping camera after capture...");
         if (cameraStream) {
-            cameraStream.getTracks().forEach(track => {
-                track.stop();
-                console.log(`Track kind stopped: ${track.kind}`);
-            });
+            cameraStream.getTracks().forEach(track => track.stop());
         }
-        // Reset states
-        setCameraStream(null); // This triggers useEffect cleanup
-        setIsCameraOn(false);
-        setIsVideoReady(false);
-        // Keep capturedPhoto for preview unless retaking
-    }, [cameraStream]); // Dependency on cameraStream
+        setCameraStream(null); // Triggers cleanup
+        setIsCameraOn(false); // Mark camera as off
+        setIsVideoReady(false); // Mark video as not ready
+    }, [cameraStream]);
+
+
+    // --- useEffect to Auto-Start Camera ---
+    useEffect(() => {
+        // Log current state values when the effect runs
+        console.log("[Auto-Start Effect] Running. Conditions:", {
+            submitted,
+            detectorReady,
+            isCameraOn,
+            capturedPhoto
+        });
+
+        // Start camera only when the form is NOT submitted,
+        // the detector is ready, the camera isn't already considered 'on',
+        // and no photo has been captured yet.
+        if (!submitted && detectorReady && !isCameraOn && !capturedPhoto) {
+            console.log("[Auto-Start Effect] Conditions met! Calling startCamera...");
+            startCamera();
+        } else {
+            // Log why conditions might not be met
+            let reason = [];
+            if (submitted) reason.push("form submitted");
+            if (!detectorReady) reason.push("detector not ready");
+            if (isCameraOn) reason.push("camera already on");
+            if (capturedPhoto) reason.push("photo already captured");
+            console.log(`[Auto-Start Effect] Conditions NOT met. Reasons: ${reason.join(', ') || 'None'}`);
+        }
+
+    }, [detectorReady, submitted, isCameraOn, startCamera, capturedPhoto]); // Dependencies
+
+   
+
  
     
 
-    // new
+    
     // --- useEffect Hook for stream assignment and video readiness (Unchanged) ---
     useEffect(() => {
         const videoElement = videoRef.current;
@@ -207,6 +246,7 @@ const Form = () => {
  const capturePhoto = () => {
     // --- DEBUG: Log function call ---
     console.log("capturePhoto function called!");
+   
     // --- END DEBUG ---
 
     setCameraError('');
@@ -554,37 +594,72 @@ useEffect(() => {
         });
 }, [mediaStream]); // Keep mediaStream dependency
     // Function to save the screenshot to the backend
+    // const saveScreenshotToServer = async (screenshot) => {
+    //     try {
+    //         const response = await fetch('http://localhost:5000/api/screenshots', {
+    //             method: 'POST',
+    //             headers: {
+    //                 'Content-Type': 'application/json',
+    //             },
+    //             body: JSON.stringify({ screenshot }),
+    //         });
+
+    //         if (!response.ok) {
+    //             throw new Error('Failed to save screenshot');
+    //         }
+
+    //         console.log('Screenshot saved successfully!');
+    //     } catch (error) {
+    //         console.error('Error saving screenshot:', error);
+    //     }
+    // };
+    // --- UPDATED Function to save the screenshot to the backend ---
     const saveScreenshotToServer = async (screenshot) => {
+        // Ensure userId is available before sending
+        if (!userId) {
+            console.error('Error saving screenshot: User ID is not available.');
+            // Optionally show an error to the user
+            return;
+        }
+
         try {
             const response = await fetch('http://localhost:5000/api/screenshots', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ screenshot }),
+                // Send both screenshot and userId
+                body: JSON.stringify({ screenshot, userId }), // <-- UPDATED HERE
             });
 
+            // It's good practice to check the response status
+            const responseData = await response.json(); // Try parsing JSON response
+
             if (!response.ok) {
-                throw new Error('Failed to save screenshot');
+                 // Use message from backend if available, otherwise throw generic error
+                throw new Error(responseData.message || `Failed to save screenshot (Status: ${response.status})`);
             }
 
-            console.log('Screenshot saved successfully!');
+            console.log('Screenshot saved successfully via backend:', responseData); // Log backend response
+
         } catch (error) {
             console.error('Error saving screenshot:', error);
+            // Optionally, display this error to the user
         }
     };
+    // --- END UPDATED Function ---
 
     // Automatically capture a screenshot every 2 minutes
     useEffect(() => {
-        if (submitted && mediaStream) {
+        if (submitted && mediaStream && userId) {
             const interval = setInterval(() => {
                 console.log('Capturing screenshot...');
                 captureScreenshot();
-            }, 2 * 60 * 1000); // 2 minutes in milliseconds
+            }, 1 * 30 * 1000); // 2 minutes in milliseconds
 
             return () => clearInterval(interval); // Cleanup interval on unmount
         }
-    }, [submitted, mediaStream, captureScreenshot]);
+    }, [submitted, mediaStream, captureScreenshot,userId]);
 
     // Stop the media stream when the component unmounts
     useEffect(() => {
@@ -653,124 +728,91 @@ useEffect(() => {
                         />
                         {phoneError && <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError || ''}</p>}
                     </div>
+                    
                     {/* --- Camera & Face Detection Section --- */}
                     <div className="form-group camera-section">
-                        <label>Your Face Photo:</label>
-                        <p className="camera-instructions">
-                            Position your face clearly in the frame. We'll capture a cropped photo of your face.
-                        </p>
-                        {/* --- UPDATED: Conditional Warning for Multiple Faces --- */}
-                        {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
-                            <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
-                                Please ensure only one face is visible in the camera.
-                            </p>
-                        )}
-                        {/* --- END UPDATE --- */}
-                        {/* Show detection status from the hook */}
-                        <p className="detection-status">Status: {detectionStatus}</p>
+                        
+                        
 
-                        {/* Camera Error Display */}
-                        {cameraError && <p className="error-message visible">{cameraError}</p>}
+                        {/* --- UPDATED: Show camera status/error OR preview --- */}
+                        {!capturedPhoto ? (
+                            // Show live feed stuff if no photo captured yet
+                            <>
+                                {/* Multiple faces warning */}
+                                {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
+                                    <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
+                                        Please ensure only one face is visible in the camera.
+                                    </p>
+                                )}
+                                
+                                {/* Camera Error Display */}
+                                {cameraError && <p className="error-message visible">{cameraError}</p>}
 
-                        {/* Button to start camera */}
-                        {!isCameraOn && !capturedPhoto && (
-                            <button
-                                type="button"
-                                onClick={startCamera}
-                                className="camera-button"
-                                // Disable if detector isn't ready (from hook)
-                                disabled={!detectorReady}
-                            >
-                                {detectorReady ? 'Start Camera' : 'Loading Detector...'}
-                            </button>
-                        )}
+                                {/* Live feed container (show if camera should be on) */}
+                                {(isCameraOn || !detectorReady) && !cameraError && ( // Show container while starting or if running
+                                    <div className="camera-live-container">
+                                        <video
+                                            ref={videoRef}
+                                            autoPlay
+                                            playsInline
+                                            muted
+                                            className="camera-video-feed"
+                                            style={{ visibility: isVideoReady ? 'visible' : 'hidden' }} // Hide until ready
+                                        ></video>
 
-                        {/* Live feed, detection box, and capture controls */}
-                        {isCameraOn && (
-                        <div className="camera-live-container">
-                        <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="camera-video-feed"
-                        ></video>
+                                        {/* Loading indicator while video not ready */}
+                                        {!isVideoReady && detectorReady && <p className="camera-loading">Initializing camera...</p>}
 
-        {/* Overlay for drawing detection box */}
-        {faceDetectedBox && isVideoReady && videoRef.current && (
-            <>
-                {/* --- DEBUG: Log dimensions and coordinates --- */}
-                {console.log("Render Overlay:", {
-                    videoOffsetW: videoRef.current.offsetWidth, // Rendered width
-                    videoClientW: videoRef.current.clientWidth, // Width inside padding
-                    videoVideoW: videoRef.current.videoWidth,   // Intrinsic width
-                    boxX: faceDetectedBox.x,
-                    boxW: faceDetectedBox.width,
-                    calculatedLeft: videoRef.current.offsetWidth - faceDetectedBox.x - faceDetectedBox.width
-                })}
-                {/* --- END DEBUG ---
-                <div className="detection-box-overlay" style={{
-                    position: 'absolute',
-                    // --- Refined Mirroring Calculation ---
-                    // Use offsetWidth for rendered width
-                    left: `${videoRef.current.offsetWidth - faceDetectedBox.x - faceDetectedBox.width}px`,
-                    // --- End Refined Calculation ---
-                    top: `${faceDetectedBox.y}px`,
-                    width: `${faceDetectedBox.width}px`,
-                    height: `${faceDetectedBox.height}px`,
-                    border: '3px solid limegreen',
-                    boxShadow: '0 0 10px rgba(50, 205, 50, 0.7)',
-                    boxSizing: 'border-box', // Ensure border is included in width/height
-                    pointerEvents: 'none'
-                }}></div> */}
-            </>
-        )}
+                                        {/* Overlay (Optional) */}
+                                        {faceDetectedBox && isVideoReady && numberOfFacesDetected === 1 && (
+                                            <>
+                                                {/* Your overlay div */}
+                                            </>
+                                        )}
 
-        {/* Camera controls */}
-                    <div className="camera-controls">
-                        {/* ... buttons ... */}
-                        {/* --- DEBUG: Log button state --- */}
-                        {console.log("Render Button Check:", { isVideoReady, hasBox: !!faceDetectedBox, isDisabled: !isVideoReady || !faceDetectedBox })}
-                        {/* --- END DEBUG --- */}
-                        <button
-                            type="button"
-                            onClick={capturePhoto} // Ensure this calls the function
-                            className="camera-button capture-button"
-                            disabled={!isVideoReady || numberOfFacesDetected !== 1}
-                        >
-                            {/* Dynamically update button text */}
-                            {!isVideoReady
-                                            ? 'Loading Camera...'
-                                            : numberOfFacesDetected === 0
-                                            ? 'Align Face...'
-                                            : numberOfFacesDetected === 1
-                                            ? 'Capture Face Photo' // The only state where it's enabled
-                                            : 'Multiple Faces Detected'}
-                        </button>
-                        <button type="button" onClick={stopCamera} className="camera-button cancel-button">
-                            Cancel Camera
-                        </button>
-                        </div>
-                        </div>
-                        )}
-                        {/* Hidden canvas for drawing the CROPPED face */}
-                        <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
-
-                        {/* Preview of captured CROPPED face photo */}
-                        {capturedPhoto && !isCameraOn && (
+                                        {/* Capture Button (Only button needed here) */}
+                                        <div className="camera-controls">
+                                            <button
+                                                type="button"
+                                                onClick={capturePhoto}
+                                                className="camera-button capture-button"
+                                                disabled={!isVideoReady || numberOfFacesDetected !== 1}
+                                            >
+                                                {!isVideoReady
+                                                    ? 'Loading...'
+                                                    : numberOfFacesDetected === 0
+                                                    ? 'Align Face...'
+                                                    : numberOfFacesDetected === 1
+                                                    ? 'Capture Face Photo'
+                                                    : 'Multiple Faces Detected'}
+                                            </button>
+                                            {/* REMOVED Cancel Camera button */}
+                                        </div>
+                                    </div>
+                                )}
+                                {!detectorReady && <p>Loading face detector...</p>}
+                            </>
+                        ) : (
+                            // Show preview if photo IS captured
                             <div className="photo-preview">
                                 <p>Face Photo Captured:</p>
                                 <img src={capturedPhoto} alt="Your captured face" className="captured-photo-preview" />
+                                {/* Button to restart the camera for retake */}
                                 <button
                                     type="button"
-                                    onClick={startCamera}
+                                    onClick={startCamera} // Re-calls startCamera to clear photo and restart feed
                                     className="camera-button retake-button"
-                                    disabled={!detectorReady} // Use hook state
+                                    disabled={!detectorReady} // Disable if detector isn't ready
                                 >
                                     {detectorReady ? 'Retake Photo' : 'Loading Detector...'}
                                 </button>
                             </div>
                         )}
+                        {/* --- END UPDATED --- */}
+
+                        {/* Hidden canvas (Keep as is) */}
+                        <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
+
                     </div>
                     {/* --- End Camera Section --- */}
      
@@ -892,7 +934,7 @@ useEffect(() => {
                  <div className="popup-overlay">
                      <div className="popup">
                          <h2>Warning</h2>
-                         <p>Violation #{violations}. Please do not {isScreenSharingStopped ? 'stop screen sharing' : 'switch tabs or minimize the browser'} again.</p>
+                        <p>Please do not {isScreenSharingStopped ? 'stop screen sharing' : 'switch tabs or minimize the browser'} again.</p>
                          <button
                              className="close-button"
                              onClick={() => {

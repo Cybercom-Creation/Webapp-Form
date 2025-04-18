@@ -12,7 +12,8 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive) => {
     const detectionIntervalRef = useRef(null);
     const resultsListenerAdded = useRef(false);
 
-    // --- Initialize TFJS Backend and MediaPipe Detector ---
+    // --- Initialize TFJS Backend and Medi
+    // aPipe Detector ---
     useEffect(() => {
         const initialize = async () => {
             setDetectionStatus('Checking for MediaPipe/TFJS...');

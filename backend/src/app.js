@@ -1,10 +1,11 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors'); // Import CORS
-const fs = require('fs'); // File system module for saving files
+//const fs = require('fs'); // File system module for saving files
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
 const db = require('./utils/db'); // Adjust path as needed
+const { uploadScreenshotToDrive } = require('./Services/googleDriveService'); // Import the service
  
 
 const app = express();
@@ -72,40 +73,96 @@ app.post('/api/proctoring-logs', async (req, res) => {
 // User routes
 app.use('/api/users', userRoutes);
 
-// Endpoint to save screenshots
-app.post('/api/screenshots', (req, res) => {
-    const { screenshot } = req.body;
 
-    if (!screenshot) {
-        return res.status(400).json({ message: 'Screenshot is required' });
+// --- UPDATED Endpoint to save screenshots to Google Drive ---
+app.post('/api/screenshots', async (req, res) => {
+    const { screenshot, userId } = req.body;
+
+    if (!screenshot || !userId) {
+        return res.status(400).json({ message: 'Screenshot data and userId are required.' });
     }
 
-    // Decode the base64 image
-    const base64Data = screenshot.replace(/^data:image\/png;base64,/, '');
+    try {
+        // 1. Look up user name from the database using userId
+        const user = await new Promise((resolve, reject) => {
+            console.log(`[Screenshots API] Attempting to fetch name for userId: ${userId}`);
+            // --- CORRECTED QUERY: Use 'user_id' instead of 'id' ---
+            db.query('SELECT name FROM users WHERE user_id = ?', [userId], (err, results) => {
+            // --- END CORRECTION ---
+                if (err) {
+                    console.error('[Screenshots API] Database query error fetching user name:', err);
+                    return reject(new Error('Database error fetching user name.'));
+                }
+                if (results.length === 0) {
+                    console.warn(`[Screenshots API] User not found for userId: ${userId}`);
+                    return reject(new Error(`User with ID ${userId} not found.`));
+                }
+                console.log(`[Screenshots API] User found:`, results[0]);
+                resolve(results[0]);
+            });
+        });
 
-    // Generate a unique filename
-    const filename = `screenshot_${Date.now()}.png`;
-
-    // Define the directory to save the screenshots
-    const screenshotsDir = path.join(__dirname, 'screenshots');
-
-    // Ensure the directory exists
-    if (!fs.existsSync(screenshotsDir)) {
-        fs.mkdirSync(screenshotsDir);
-    }
-
-    // Save the screenshot as a file
-    const filePath = path.join(screenshotsDir, filename);
-    fs.writeFile(filePath, base64Data, 'base64', (err) => {
-        if (err) {
-            console.error('Error saving screenshot:', err);
-            return res.status(500).json({ message: 'Failed to save screenshot' });
+        if (!user || !user.name) {
+             return res.status(404).json({ message: `User with ID ${userId} not found or has no name.` });
         }
 
-        console.log(`Screenshot saved successfully at ${filePath}`);
-        res.status(200).json({ message: 'Screenshot saved successfully', filePath });
-    });
+        const userName = user.name;
+
+        // 2. Generate filename
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `screenshot_${userName}_${timestamp}.png`;
+
+        // 3. Call Google Drive upload service
+        console.log(`[Screenshots API] Calling uploadScreenshotToDrive for user: ${userName}, filename: ${filename}`);
+        const fileId = await uploadScreenshotToDrive(userName, screenshot, filename);
+
+        // 4. Send success response
+        res.status(200).json({
+            message: 'Screenshot uploaded successfully to Google Drive.',
+            driveFileId: fileId,
+            fileName: filename
+        });
+
+    } catch (error) {
+        console.error('[Screenshots API] Error processing screenshot upload:', error);
+        res.status(500).json({ message: `Failed to upload screenshot: ${error.message}` });
+    }
 });
+// --- END UPDATED Endpoint ---
+// // Endpoint to save screenshots
+// app.post('/api/screenshots', (req, res) => {
+//     const { screenshot } = req.body;
+
+//     if (!screenshot) {
+//         return res.status(400).json({ message: 'Screenshot is required' });
+//     }
+
+//     // Decode the base64 image
+//     const base64Data = screenshot.replace(/^data:image\/png;base64,/, '');
+
+//     // Generate a unique filename
+//     const filename = `screenshot_${Date.now()}.png`;
+
+//     // Define the directory to save the screenshots
+//     const screenshotsDir = path.join(__dirname, 'screenshots');
+
+//     // Ensure the directory exists
+//     if (!fs.existsSync(screenshotsDir)) {
+//         fs.mkdirSync(screenshotsDir);
+//     }
+
+//     // Save the screenshot as a file
+//     const filePath = path.join(screenshotsDir, filename);
+//     fs.writeFile(filePath, base64Data, 'base64', (err) => {
+//         if (err) {
+//             console.error('Error saving screenshot:', err);
+//             return res.status(500).json({ message: 'Failed to save screenshot' });
+//         }
+
+//         console.log(`Screenshot saved successfully at ${filePath}`);
+//         res.status(200).json({ message: 'Screenshot saved successfully', filePath });
+//     });
+// });
 
 // Start the server
 app.listen(PORT, () => {
