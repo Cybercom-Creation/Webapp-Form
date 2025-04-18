@@ -28,6 +28,15 @@ const Form = () => {
      const videoRef = useRef(null); // <-- Add video ref
      const canvasRef = useRef(null); // <-- Add canvas ref
 
+    // --- ADDED: State for face detection event timing ---
+    const [noFaceStartTime, setNoFaceStartTime] = useState(null);
+    const [multipleFaceStartTime, setMultipleFaceStartTime] = useState(null);
+    // --- END ADDED ---
+
+    // --- ADDED: State to track the specific type of the current warning ---
+    const [currentWarningType, setCurrentWarningType] = useState(null); 
+    // --- END ADDED ---
+
      // --- Use the MediaPipe Face Detection Hook ---
     // Pass videoRef and boolean indicating if camera feed should be active for detection
     const {
@@ -387,7 +396,7 @@ const handleSubmit = async (e) => {
 };
 
    // Function to send proctoring log data to the backend
-   const sendProctoringLog = async (logData) => {
+   const sendProctoringLog = useCallback(async (logData) => {
     if (!logData.userId) {
         console.error("Cannot send proctoring log: User ID is missing.");
         return;
@@ -413,7 +422,105 @@ const handleSubmit = async (e) => {
     } catch (error) {
         console.error('Error sending proctoring log:', error);
     }
-};
+}, []);
+
+    // --- MODIFIED: useEffect to handle logging AND TRIGGERING WARNINGS for face detection events ---
+    useEffect(() => {
+        // Only run this logic during the active test phase
+        if (submitted && userId && mediaStream && isCameraOn && isVideoReady) {
+            const currentTime = Date.now();
+
+            // --- Handle NO FACE Detected ---
+            if (numberOfFacesDetected === 0) {
+                // If this is the START of a no-face period...
+                if (noFaceStartTime === null) {
+                    setNoFaceStartTime(currentTime); // Start tracking duration
+                    console.log("VIOLATION TRIGGER: No Face Detected");
+
+                    // --- TRIGGER VIOLATION WARNING ---
+                    setViolations(prev => prev + 1); // Increment violations
+                    setWarningStartTime(currentTime); // Record start time for logging duration later
+                    setCurrentWarningType('no_face'); // Set the type
+                    setShowWarning(true); // Show the popup
+                    // --- END TRIGGER ---
+
+                    // If transitioning from multiple faces, reset its timer (logging happens when returning to 1)
+                    if (multipleFaceStartTime !== null) {
+                        setMultipleFaceStartTime(null);
+                    }
+                }
+            }
+            // --- Handle MULTIPLE FACES Detected ---
+            else if (numberOfFacesDetected > 1) {
+                // If this is the START of a multiple-face period...
+                if (multipleFaceStartTime === null) {
+                    setMultipleFaceStartTime(currentTime); // Start tracking duration
+                    console.log("VIOLATION TRIGGER: Multiple Faces Detected");
+
+                    // --- TRIGGER VIOLATION WARNING ---
+                    setViolations(prev => prev + 1); // Increment violations
+                    setWarningStartTime(currentTime); // Record start time for logging duration later
+                    setCurrentWarningType('multiple_face'); // Set the type
+                    setShowWarning(true); // Show the popup
+                    // --- END TRIGGER ---
+
+                    // If transitioning from no face, reset its timer (logging happens when returning to 1)
+                    if (noFaceStartTime !== null) {
+                        setNoFaceStartTime(null);
+                    }
+                }
+            }
+            // --- Handle EXACTLY ONE FACE Detected (Normal state - END of previous warning PERIOD) ---
+            else if (numberOfFacesDetected === 1) {
+                // If a no-face period just ENDED, log its duration and reset timer
+                if (noFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: No Face (transition to 1)");
+                    // Log the duration of the no-face period
+                    sendProctoringLog({
+                        userId: userId,
+                        triggerEvent: 'no_face', // Log the event type
+                        startTime: noFaceStartTime, // When the no-face period started
+                        endTime: currentTime,     // When it ended (returned to 1 face)
+                    });
+                    setNoFaceStartTime(null); // Reset timer
+                }
+                // If a multiple-face period just ENDED, log its duration and reset timer
+                if (multipleFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: Multiple Faces (transition to 1)");
+                    // Log the duration of the multiple-face period
+                    sendProctoringLog({
+                        userId: userId,
+                        triggerEvent: 'multiple_face', // Log the event type
+                        startTime: multipleFaceStartTime, // When the multiple-face period started
+                        endTime: currentTime,         // When it ended (returned to 1 face)
+                    });
+                    setMultipleFaceStartTime(null); // Reset timer
+                }
+            }
+        } else {
+            // Reset timers if test becomes inactive
+            if (noFaceStartTime !== null) setNoFaceStartTime(null);
+            if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
+        }
+
+    // Dependencies: Add setters used for violation trigger
+    }, [
+        numberOfFacesDetected,
+        submitted,
+        userId,
+        mediaStream,
+        isCameraOn,
+        isVideoReady,
+        noFaceStartTime,
+        multipleFaceStartTime,
+        sendProctoringLog, // Ensure this is stable (useCallback)
+        // Add setters needed for triggering the warning:
+        setViolations,
+        setWarningStartTime,
+        setShowWarning,
+        setCurrentWarningType
+    ]);
+    // --- END MODIFIED ---
 
      const checkFieldExists = async (field, value, setErrorCallback) => {
         // Basic client-side checks first
@@ -931,43 +1038,85 @@ useEffect(() => {
      
             {/* Violation Warning Popup */}
             {showWarning && (
-                 <div className="popup-overlay">
-                     <div className="popup">
-                         <h2>Warning</h2>
-                        <p>Please do not {isScreenSharingStopped ? 'stop screen sharing' : 'switch tabs or minimize the browser'} again.</p>
-                         <button
-                             className="close-button"
-                             onClick={() => {
-                                 const endTime = Date.now();
-                                 const startTime = warningStartTime;
-     
-                                 if (startTime && userId) {
-                                     const logData = {
-                                         userId: userId,
-                                         triggerEvent: isScreenSharingStopped ? 'screenshare_stop' : 'tab_switch',
-                                         startTime: startTime,
-                                         endTime: endTime,
-                                     };
-                                     sendProctoringLog(logData);
-                                 } else {
-                                      console.error("Could not log warning interaction: startTime or userId missing.", { startTime, userId });
-                                 }
-     
-                                 setShowWarning(false);
-                                 setWarningStartTime(null);
-     
-                                 // If the warning was due to screen sharing stop, attempt restart
-                                 if (isScreenSharingStopped) {
-                                     requestScreenCapture();
-                                     setIsScreenSharingStopped(false); // Reset the flag
-                                 }
-                             }}
-                         >
-                             Close
-                         </button>
-                     </div>
-                 </div>
-             )}
+                <div className="popup-overlay">
+                    <div className="popup">
+                        <h2>Warning</h2>
+                        <p>
+                            Violation #{violations}. Please do not{' '}
+                            {currentWarningType === 'tab_switch' ? 'switch tabs or minimize the browser' :
+                            currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
+                            currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
+                            currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
+                            'violate the rules'}
+                            {' '}again.
+                        </p>
+                        <button
+                            className="close-button"
+                            // --- MODIFIED onClick ---
+                            onClick={() => {
+                                const endTime = Date.now(); // Time when user acknowledges the warning
+                                const startTime = warningStartTime; // Time when the violation *started*
+
+                                 // Log ONLY non-face violation events when the popup is closed
+                                 if (startTime && userId && currentWarningType) {
+                                    let triggerEventToLog;
+                                    let shouldLogPopupClose = false; // Flag to decide if we log here
+
+                                    switch (currentWarningType) {
+                                        case 'tab_switch':
+                                            triggerEventToLog = 'tab_switch';
+                                            shouldLogPopupClose = true; // Log tab switch duration on close
+                                            break;
+                                        case 'screenshare_stop':
+                                            triggerEventToLog = 'screenshare_stop';
+                                            shouldLogPopupClose = true; // Log screen share stop duration on close
+                                            break;
+                                        // --- REMOVED logging for face events here ---
+                                        case 'no_face':
+                                        case 'multiple_face':
+                                            // Do NOT log 'no_face' or 'multiple_face' here.
+                                            // The duration is logged in the face detection useEffect when the condition ends.
+                                            console.log(`Warning popup closed for ${currentWarningType}, duration log handled elsewhere.`);
+                                            shouldLogPopupClose = false;
+                                            break;
+                                        // --- END REMOVAL ---
+                                        default:
+                                            triggerEventToLog = 'unknown_warning_ack';
+                                            shouldLogPopupClose = true; // Log unknown warning acknowledgements if needed
+                                    }
+
+                                    // Send the log ONLY if flagged
+                                    if (shouldLogPopupClose) {
+                                        sendProctoringLog({
+                                            userId: userId,
+                                            triggerEvent: triggerEventToLog,
+                                            startTime: startTime, // When the violation started
+                                            endTime: endTime,     // When the user closed the popup
+                                        });
+                                    }
+                                } else {
+                                     console.error("Could not process warning interaction: startTime, userId, or currentWarningType missing.", { startTime, userId, currentWarningType });
+                                }
+
+                                // Reset warning states
+                                setShowWarning(false);
+                                setWarningStartTime(null);
+                                setCurrentWarningType(null); // Reset the type
+
+                                // Keep specific logic for screen share recovery
+                                if (isScreenSharingStopped) {
+                                    requestScreenCapture();
+                                    setIsScreenSharingStopped(false);
+                                }
+                            }}
+                            // --- END MODIFIED onClick ---
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
      
             {/* Persistent Screen Share Required Error Popup */}
             {showScreenShareRequiredError && (

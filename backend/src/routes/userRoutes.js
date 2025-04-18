@@ -27,8 +27,15 @@ router.post('/check-field', async (req, res) => {
     // ... (keep existing implementation) ...
      const { field, value } = req.body;
 
+    // 1. Basic Input Validation (Returns 400 - OK)
     if (!field || !value) {
-        return res.status(400).json({ message: 'Field and value are required.' });
+        return res.status(400).json({ message: 'Both "field" and "value" are required.' });
+    }
+
+    // 2. Whitelist allowed fields (Returns 400 - OK)
+    const allowedFields = ['name', 'email', 'phone'];
+    if (!allowedFields.includes(field)) {
+        return res.status(400).json({ message: `Checking for field "${field}" is not permitted.` });
     }
 
     try {

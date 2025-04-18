@@ -1,3 +1,5 @@
+require('dotenv').config();
+const pool = require('./utils/db');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors'); // Import CORS
@@ -9,9 +11,27 @@ const { uploadScreenshotToDrive } = require('./Services/googleDriveService'); //
  
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
-app.use(cors()); // Enable CORS
+
+// app.use(morgan('dev'));
+
+// app.use(cors());
+
+app.use(cors({
+    origin: 'https://webapp-form-frontend.onrender.com',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    // credentials: true // Optional unless using cookies
+}));
+
+// app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
+
+// app.use((req, res, next) => {
+//     console.log('Origin:', req.headers.origin);
+//     next();
+//   });
+  
 
 // Configure body-parser with a larger limit
 app.use(bodyParser.json({ limit: '10mb' })); // Increase limit for JSON payloads
@@ -72,6 +92,28 @@ app.post('/api/proctoring-logs', async (req, res) => {
 
 // User routes
 app.use('/api/users', userRoutes);
+
+app.use((err, req, res, next) => {
+    console.error("Central Error Handler:", err.stack); // Log the full error stack
+    const statusCode = err.statusCode || 500; // Use status code from error if available
+    res.status(statusCode).json({
+      message: err.message || 'An unexpected server error occurred.',
+      // Optionally add more details in development
+      // error: process.env.NODE_ENV === 'development' ? err : {}
+    });
+  });
+
+  app.get('/api/db-test', async (req, res, next) => {
+    try {
+        const [results] = await db.query('SELECT 1 as test');
+        res.status(200).json({ message: 'Database connection successful!', results: results });
+    } catch (error) {
+        console.error("DB Test Error:", error);
+        res.status(500).json({ message: 'Database connection failed!', error: error.message });
+        // Or use next(error) if you want the central handler
+    }
+});
+
 
 
 // --- UPDATED Endpoint to save screenshots to Google Drive ---
