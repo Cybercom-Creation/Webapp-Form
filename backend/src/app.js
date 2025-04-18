@@ -7,23 +7,19 @@ const cors = require('cors'); // Import CORS
 const path = require('path'); // Path module for handling file paths
 const userRoutes = require('./routes/userRoutes');
 const db = require('./utils/db'); // Adjust path as needed
+const envPath = path.resolve(__dirname, '.env');
 const { uploadScreenshotToDrive } = require('./Services/googleDriveService'); // Import the service
+
+require('dotenv').config({ path: envPath });
  
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 
 // app.use(morgan('dev'));
 
-// app.use(cors());
-
-app.use(cors({
-    origin: 'https://webapp-form-frontend.onrender.com',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    // credentials: true // Optional unless using cookies
-}));
+app.use(cors());
 
 // app.options('*', cors()); // <- Handles preflight requests (OPTIONS)
 
@@ -115,15 +111,14 @@ app.use((err, req, res, next) => {
 });
 
 
-
 // --- UPDATED Endpoint to save screenshots to Google Drive ---
 app.post('/api/screenshots', async (req, res) => {
     const { screenshot, userId } = req.body;
-
+ 
     if (!screenshot || !userId) {
         return res.status(400).json({ message: 'Screenshot data and userId are required.' });
     }
-
+ 
     try {
         // 1. Look up user name from the database using userId
         const user = await new Promise((resolve, reject) => {
@@ -143,28 +138,28 @@ app.post('/api/screenshots', async (req, res) => {
                 resolve(results[0]);
             });
         });
-
+ 
         if (!user || !user.name) {
              return res.status(404).json({ message: `User with ID ${userId} not found or has no name.` });
         }
-
+ 
         const userName = user.name;
-
+ 
         // 2. Generate filename
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `screenshot_${userName}_${timestamp}.png`;
-
+ 
         // 3. Call Google Drive upload service
         console.log(`[Screenshots API] Calling uploadScreenshotToDrive for user: ${userName}, filename: ${filename}`);
         const fileId = await uploadScreenshotToDrive(userName, screenshot, filename);
-
+ 
         // 4. Send success response
         res.status(200).json({
             message: 'Screenshot uploaded successfully to Google Drive.',
             driveFileId: fileId,
             fileName: filename
         });
-
+ 
     } catch (error) {
         console.error('[Screenshots API] Error processing screenshot upload:', error);
         res.status(500).json({ message: `Failed to upload screenshot: ${error.message}` });
