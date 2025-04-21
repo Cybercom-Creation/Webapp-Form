@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 // Import the custom hook
 import { useMediaPipeFaceDetection } from '../hooks/useMediaPipeFaceDetection'; // Adjust path if needed
+import { useAudioDetection } from '../hooks/useAudioDetection'; // <-- ADD THIS
 import './Form.css'; // Import the CSS file for styling
 
 const Form = () => {
@@ -44,7 +45,7 @@ const Form = () => {
         faceDetectedBox,
         getLatestDetectedBox,
         numberOfFacesDetected
-    } = useMediaPipeFaceDetection(videoRef, isCameraOn); // Detect when camera should be active
+    } = useMediaPipeFaceDetection(videoRef, isCameraOn, isVideoReady); // Detect when camera should be active
 
     // --- State for Proctoring/Google Form ---
     const [showInstructions, setShowInstructions] = useState(false);
@@ -52,10 +53,21 @@ const Form = () => {
     const [showPermissionError, setShowPermissionError] = useState(false);
     const [timer, setTimer] = useState(600);
     const [isTimeOver, setIsTimeOver] = useState(false);
-    const [violations, setViolations] = useState(0);
     const googleFormRef = useRef(null);
     const [mediaStream, setMediaStream] = useState(null);
     const [isScreenSharingStopped, setIsScreenSharingStopped] = useState(false);
+    const [isFaceDetectionGracePeriod, setIsFaceDetectionGracePeriod] = useState(false);
+    const [audioSetupError, setAudioSetupError] = useState(null);
+    const [noiseStartTime, setNoiseStartTime] = useState(null);
+
+     // --- Use the Audio Level Detection Hook ---
+     const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver; // Condition to run audio hook
+     const {
+         isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
+         currentDecibels, // Optional: for debugging/display
+         audioError: hookAudioError, // Get error from hook
+         isMonitoring: isAudioMonitoring // Check if hook is actively monitoring
+     } = useAudioDetection(isAudioMonitoringActive);
 
     // --- Validation Functions (Unchanged) ---
     const validateEmail = (email) => {
@@ -471,7 +483,7 @@ const Form = () => {
     // ... (No changes needed here)
     useEffect(() => {
         // Only run this logic during the active test phase (AFTER submission and screen share start)
-        if (submitted && userId && mediaStream && isCameraOn && isVideoReady) { // Check for mediaStream too
+        if (submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod) { // Check for mediaStream too
             const currentTime = Date.now();
 
             // --- Handle NO FACE Detected ---
@@ -479,7 +491,6 @@ const Form = () => {
                 if (noFaceStartTime === null) {
                     setNoFaceStartTime(currentTime);
                     console.log("VIOLATION TRIGGER: No Face Detected");
-                    setViolations(prev => prev + 1);
                     setWarningStartTime(currentTime);
                     setCurrentWarningType('no_face');
                     setShowWarning(true);
@@ -491,7 +502,6 @@ const Form = () => {
                 if (multipleFaceStartTime === null) {
                     setMultipleFaceStartTime(currentTime);
                     console.log("VIOLATION TRIGGER: Multiple Faces Detected");
-                    setViolations(prev => prev + 1);
                     setWarningStartTime(currentTime);
                     setCurrentWarningType('multiple_face');
                     setShowWarning(true);
@@ -511,22 +521,28 @@ const Form = () => {
                     setMultipleFaceStartTime(null);
                 }
                 // Also clear warning popup if face becomes valid again
-                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                    console.log("Face condition corrected, hiding warning.");
-                    setShowWarning(false);
-                    setWarningStartTime(null);
-                    setCurrentWarningType(null);
-                }
+                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                //     console.log("Face condition corrected, hiding warning.");
+                //     setShowWarning(false);
+                //     setWarningStartTime(null);
+                //     setCurrentWarningType(null);
+                // }
             }
-        } else {
+        }
+        else if (isFaceDetectionGracePeriod) {
+            // Optional: Log that checks are skipped during grace period
+            console.log("[Face Detection Effect] Skipping checks during grace period.");
+       } 
+        else {
             // Reset timers if test becomes inactive or prerequisites aren't met
             if (noFaceStartTime !== null) setNoFaceStartTime(null);
             if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
         }
     }, [
-        numberOfFacesDetected, submitted, userId, mediaStream, isCameraOn, isVideoReady,
+        numberOfFacesDetected, submitted, userId, mediaStream, isCameraOn, isVideoReady, isTimeOver,
         noFaceStartTime, multipleFaceStartTime, sendProctoringLog, showWarning, currentWarningType, // Added showWarning/currentWarningType
-        setViolations, setWarningStartTime, setShowWarning, setCurrentWarningType
+        setWarningStartTime, setShowWarning, setCurrentWarningType,
+        isFaceDetectionGracePeriod
     ]);
 
 
@@ -573,12 +589,10 @@ const Form = () => {
     // --- Visibility Change Listener (Unchanged Logic) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && userId && mediaStream) { // Check mediaStream here too
+        if (submitted && userId && mediaStream && !isTimeOver) { // Check mediaStream here too
             const handleVisibilityChange = () => {
                 if (document.hidden) {
                     console.log("Violation detected: Tab switched");
-                    const currentViolationCount = violations + 1;
-                    setViolations(currentViolationCount);
                     setWarningStartTime(Date.now());
                     setCurrentWarningType('tab_switch'); // Set type for warning message
                     setIsScreenSharingStopped(false); // Ensure this is false for tab switch
@@ -588,7 +602,7 @@ const Form = () => {
             document.addEventListener('visibilitychange', handleVisibilityChange);
             return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
-    }, [submitted, userId, violations, mediaStream]); // Added mediaStream
+    }, [submitted, userId, mediaStream, isTimeOver]); // Added mediaStream
 
 
     // --- Timer Logic (Unchanged) ---
@@ -640,6 +654,7 @@ const Form = () => {
             }, 200); // Increased delay slightly (e.g., 200ms)
 
             setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE TO START TEST PHASE
+            setIsFaceDetectionGracePeriod(true);
 
             const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {
@@ -655,6 +670,7 @@ const Form = () => {
             console.error('Error requesting screen capture:', error);
             // Don't set submitted=true if permission denied
             setShowPermissionError(true);
+            setIsFaceDetectionGracePeriod(false); 
             // Ensure camera state is consistent if screen share fails
             if (isCameraOn) {
                 console.log("Screen share failed, ensuring initial camera is stopped.");
@@ -663,18 +679,17 @@ const Form = () => {
         }
     };
 
-    // --- Stop Sharing Violation Handler (Unchanged) ---
-    // ... (No changes needed here)
     const handleStopSharingViolation = () => {
+        if (isTimeOver) {
+            console.log("Screen sharing stopped after time over. Ignoring violation.");
+            return;
+        }
         console.log("Violation detected: Screen sharing stopped");
         // Stop the stream tracks if they exist
         if (mediaStream) {
             mediaStream.getTracks().forEach((track) => track.stop());
         }
         setMediaStream(null); // Clear the state
-
-        const currentViolationCount = violations + 1;
-        setViolations(currentViolationCount);
         setWarningStartTime(Date.now());
         setCurrentWarningType('screenshare_stop'); // Set type
         // isScreenSharingStopped is already set true by onended handler
@@ -760,14 +775,14 @@ const Form = () => {
     // --- Screenshot Interval (Unchanged) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && mediaStream && userId) {
+        if (submitted && mediaStream && userId && !isTimeOver) {
             const interval = setInterval(() => {
                 console.log('Capturing periodic screenshot...');
                 captureScreenshot();
-            }, 1 * 30 * 1000); // 2 minutes
+            }, 2 * 60 * 1000); // 2 minutes
             return () => clearInterval(interval);
         }
-    }, [submitted, mediaStream, captureScreenshot, userId]);
+    }, [submitted, mediaStream, captureScreenshot, userId, isTimeOver]);
 
 
     // --- Media Stream Cleanup (Unchanged) ---
@@ -780,6 +795,117 @@ const Form = () => {
             }
         };
     }, [mediaStream]);
+
+        // --- Effect to manage Face Detection Grace Period Timeout ---
+        useEffect(() => {
+            let gracePeriodTimer;
+            // Only run the timeout logic when the grace period starts
+            if (isFaceDetectionGracePeriod) {
+                console.log("Starting face detection grace period (3 seconds)...");
+                gracePeriodTimer = setTimeout(() => {
+                    console.log("Face detection grace period ended.");
+                    setIsFaceDetectionGracePeriod(false);
+                }, 3000); // 3-second grace period (adjust if needed)
+            }
+    
+            // Cleanup function to clear the timer if the component unmounts
+            // or if the grace period state changes before the timer finishes.
+            return () => {
+                if (gracePeriodTimer) {
+                    clearTimeout(gracePeriodTimer);
+                    console.log("Cleared face detection grace period timer.");
+                }
+            };
+        }, [isFaceDetectionGracePeriod]); // Run only when isFaceDetectionGracePeriod changes    
+
+    // --- Effect to handle Audio Hook Errors ---
+    useEffect(() => {
+        if (hookAudioError) {
+            setAudioSetupError(hookAudioError);
+            // Optionally, stop the test or show a blocking error?
+            console.error("Audio Monitoring Setup Error:", hookAudioError);
+        } else {
+            setAudioSetupError(null); // Clear error if hook recovers (e.g., permission granted later)
+        }
+    }, [hookAudioError]);
+
+     // --- Effect for Noise Detection Logging/Warning Trigger ---
+     useEffect(() => {
+
+         // --- DEBUG LOG ---
+         console.log(`[Form.js Noise Effect] Running. isNoiseLevelHigh=${isNoiseLevelHigh}, isAudioMonitoring=${isAudioMonitoring}`);
+         // --- END DEBUG LOG ---
+         
+        // Only run this logic during the active test phase when audio is monitoring
+        if (submitted && userId && mediaStream && isAudioMonitoring && !isTimeOver) {
+            const currentTime = Date.now();
+
+            // --- Handle HIGH NOISE Detected ---
+            if (isNoiseLevelHigh) {
+                // Check if this is the start of the high noise event
+                if (noiseStartTime === null) {
+                    console.log("VIOLATION TRIGGER: High Noise Detected");
+                    setNoiseStartTime(currentTime);
+                    setWarningStartTime(currentTime);
+                    setCurrentWarningType('high_noise');
+                    setShowWarning(true);
+                }
+                else {
+                    // If noise is still high but start time is already set, do nothing (warning is already shown or was closed manually)
+                    console.log(`   [Noise Effect] Condition NOT MET for trigger: isNoiseLevelHigh=true, but noiseStartTime is NOT null (${noiseStartTime}). Doing nothing.`);
+               }
+            }
+            // --- Handle Noise Level NORMAL ---
+            else {
+                // Check if a high noise event was previously active
+                if (noiseStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: High Noise");
+                    sendProctoringLog({
+                        userId: userId,
+                        triggerEvent: 'high_noise', // Use a specific event type
+                        startTime: noiseStartTime,
+                        endTime: currentTime
+                    });
+                    // Reset the start time and hide the persistent warning
+                    setNoiseStartTime(null);
+                    // setShowNoiseWarning(false);
+                    // If we were showing the temporary warning for noise, clear it too
+                    // if (showWarning && currentWarningType === 'high_noise') {
+                    //     setShowWarning(false);
+                    //     setWarningStartTime(null);
+                    //     setCurrentWarningType(null);
+                    // }
+                }
+                else {
+                    console.log("   [Noise Effect] Condition NOT MET for reset: isNoiseLevelHigh=false, and noiseStartTime is already null. Doing nothing.");
+               }
+            }
+        } else {
+            // Reset noise state if test becomes inactive or prerequisites aren't met
+            if (noiseStartTime !== null) {
+                // If the test ends while noise is high, log the end time
+                console.log("LOG EVENT DURATION END (Test Inactive): High Noise");
+                 sendProctoringLog({
+                     userId: userId, // userId might still be available
+                     triggerEvent: 'high_noise',
+                     startTime: noiseStartTime,
+                     endTime: Date.now() // Log with current time
+                 });
+                setNoiseStartTime(null);
+            }
+        //     if (showWarning && currentWarningType === 'high_noise') {
+        //         console.log("   [Noise Effect] Test inactive, hiding any active noise warning.");
+        //         setShowWarning(false);
+        //         setWarningStartTime(null);
+        //         setCurrentWarningType(null);
+        //    }
+            // setShowNoiseWarning(false); // Ensure warning is hidden when inactive
+        }
+    }, [
+        isNoiseLevelHigh, submitted, userId, mediaStream, isAudioMonitoring, isTimeOver, // Key dependencies
+        noiseStartTime, sendProctoringLog, // State and functions used
+        showWarning, currentWarningType, setWarningStartTime, setCurrentWarningType
+    ]);
 
     // ... (No changes needed here)
     const isSubmitDisabled =
@@ -912,10 +1038,14 @@ const Form = () => {
                                     style={{ transform: 'scaleX(-1)' }} // Flip horizontally
                                 ></video>
                                 {/* Show placeholder if camera is intended ON but not ready/error */}
-                                {isCameraOn && !isVideoReady && !cameraError && <p className="camera-placeholder">Initializing...</p>}
+                                {isCameraOn && !isVideoReady && !cameraError && !detectorReady && <p className="camera-placeholder">Initializing...</p>}
                                 {/* Show placeholder if camera is OFF */}
                                 {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
                             </div>
+                            {/* Display Audio Setup Error if present */}
+                            {audioSetupError && <p className="error-message audio-error">{audioSetupError}</p>}
+                            {/* Optional: Display current decibel level for debugging */}
+                            {/* {isAudioMonitoring && <p>Audio Level: {currentDecibels.toFixed(1)} dBFS</p>} */}
                         </div>
                         <iframe
                             src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
@@ -924,7 +1054,6 @@ const Form = () => {
                             frameBorder="0" marginHeight="0" marginWidth="0"
                         >Loading…</iframe>
                     </div>
-                    <p className="violations-info">Violations: {violations}</p>
                 </div>
             ) : submitted && !mediaStream && !showPermissionError ? ( // Waiting for screen share after agreeing
                  <div className="loading-message">
@@ -1002,67 +1131,100 @@ const Form = () => {
                     <div className="popup">
                         <h2>Warning</h2>
                         <p>
-                            Violation detected ({violations}). Please do not{' '}
+                            Violation detected. Please do not{' '}
                             {currentWarningType === 'tab_switch' ? 'switch tabs or minimize the browser' :
                             currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
                             currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
                             currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
+                            currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : // <-- ADD THIS CASE
                             'violate the test rules'}
                             {' '}again.
                         </p>
                         <button
                             className="close-button"
                             onClick={() => {
-                                const endTime = Date.now();
-                                const startTime = warningStartTime;
+                                 let allowClose = true; // Assume close is allowed by default
 
-                                // Log acknowledgement for specific violation types if needed
-                                if (startTime && userId && currentWarningType) {
-                                    let triggerEventToLog;
-                                    let shouldLogPopupClose = false;
-
-                                    switch (currentWarningType) {
-                                        case 'tab_switch':
-                                            triggerEventToLog = 'tab_switch_ack';
-                                            shouldLogPopupClose = true;
-                                            break;
-                                        case 'screenshare_stop':
-                                            triggerEventToLog = 'screenshare_stop_ack';
-                                            shouldLogPopupClose = true;
-                                            break;
-                                        // Don't log ack for face events here, duration is logged elsewhere
-                                        case 'no_face':
-                                        case 'multiple_face':
-                                            console.log(`Warning popup closed for ${currentWarningType}, duration log handled elsewhere.`);
-                                            shouldLogPopupClose = false;
-                                            break;
-                                        default:
-                                            triggerEventToLog = 'unknown_warning_ack';
-                                            shouldLogPopupClose = true;
-                                    }
-
-                                    if (shouldLogPopupClose) {
-                                        sendProctoringLog({
-                                            userId: userId,
-                                            triggerEvent: triggerEventToLog,
-                                            startTime: startTime, // When violation *started*
-                                            endTime: endTime,     // When user closed popup
-                                        });
-                                    }
-                                } else {
-                                     console.error("Could not process warning interaction log: startTime, userId, or currentWarningType missing.", { startTime, userId, currentWarningType });
-                                }
-
-                                // Reset warning states
-                                setShowWarning(false);
-                                setWarningStartTime(null);
-                                setCurrentWarningType(null);
-
-                                // If warning was due to screen share stop, show the persistent error prompt
-                                if (isScreenSharingStopped) {
-                                    setShowScreenShareRequiredError(true);
-                                    setIsScreenSharingStopped(false); // Reset flag after handling
-                                }
+                                 // Check if it's a face violation and if it's still active
+                                 if (currentWarningType === 'no_face') {
+                                     if (numberOfFacesDetected === 0) { // No face violation still active
+                                         allowClose = false;
+                                         console.log("Close button clicked, but 'no_face' violation persists. Preventing close.");
+                                         // Optionally, add brief visual feedback like shaking the popup slightly? (More complex UI task)
+                                     }
+                                 } else if (currentWarningType === 'multiple_face') {
+                                     if (numberOfFacesDetected > 1) { // Multiple faces violation still active
+                                         allowClose = false;
+                                         console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
+                                     }
+                                 }
+                                 else if (currentWarningType === 'high_noise') {
+                                     if (isNoiseLevelHigh) { // High noise violation still active
+                                         allowClose = false;
+                                         console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                     }
+                                 }
+ 
+                                 // Only proceed if the close is allowed
+                                 if (allowClose) {
+                                     console.log(`Close allowed for warning type: ${currentWarningType}. Proceeding with close and logging.`);
+                                     const endTime = Date.now();
+                                     const startTime = warningStartTime;
+ 
+                                     // Log acknowledgement for specific violation types if needed
+                                     if (startTime && userId && currentWarningType) {
+                                         let triggerEventToLog;
+                                         let shouldLogPopupClose = false;
+ 
+                                         switch (currentWarningType) {
+                                             case 'tab_switch':
+                                                 triggerEventToLog = 'tab_switch'; // Changed event name for clarity
+                                                 shouldLogPopupClose = true;
+                                                 break;
+                                             case 'screenshare_stop':
+                                                 triggerEventToLog = 'screenshare_stop'; // Changed event name
+                                                 shouldLogPopupClose = true;
+                                                 break;
+                                             case 'high_noise':
+                                                 triggerEventToLog = 'high_noise'; // Changed event name
+                                                 shouldLogPopupClose = true;
+                                                 break;
+                                             // Log acknowledgement for face issues ONLY if closing is allowed (meaning issue was resolved)
+                                             case 'no_face':
+                                                 triggerEventToLog = 'no_face'; // Log acknowledgement when resolved and closed
+                                                 shouldLogPopupClose = true;
+                                                 break;
+                                             case 'multiple_face':
+                                                 triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
+                                                 shouldLogPopupClose = true;
+                                                 break;
+                                             default:
+                                                 triggerEventToLog = 'unknown_warning';
+                                                 shouldLogPopupClose = true;
+                                         }
+ 
+                                         if (shouldLogPopupClose) {
+                                             sendProctoringLog({
+                                                 userId: userId,
+                                                 triggerEvent: triggerEventToLog,
+                                                 startTime: startTime, // When violation *started*
+                                                 endTime: endTime,     // When user closed popup
+                                             });
+                                         }
+                                     } else {
+                                          console.error("Could not process warning interaction log: startTime, userId, or currentWarningType missing.", { startTime, userId, currentWarningType });
+                                     }
+ 
+                                     // Reset warning states ONLY if close is allowed
+                                     setShowWarning(false);
+                                     setWarningStartTime(null);
+                                     setCurrentWarningType(null);
+ 
+                                     if (isScreenSharingStopped) {
+                                         setShowScreenShareRequiredError(true);
+                                         setIsScreenSharingStopped(false);
+                                     }
+                                 }
                             }}
                         >
                             Close
