@@ -415,7 +415,7 @@ const Form = () => {
         console.log("Submitting form with captured photo...");
 
         try {
-            const response = await fetch('http://localhost:5000/api/users', {
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(userDetails),
@@ -463,7 +463,7 @@ const Form = () => {
 
         console.log("Sending proctoring log:", dataToSend);
         try {
-            const response = await fetch('http://localhost:5000/api/proctoring-logs', {
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/proctoring-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dataToSend),
@@ -564,7 +564,7 @@ const Form = () => {
         setErrorCallback('');
 
         try {
-            const response = await fetch('http://localhost:5000/api/users/check-field', {
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users/check-field`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ field, value }),
@@ -746,7 +746,7 @@ const Form = () => {
         }
  
         try {
-            const response = await fetch('http://localhost:5000/api/screenshots', {
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/screenshots`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

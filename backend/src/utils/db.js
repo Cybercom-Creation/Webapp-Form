@@ -1,33 +1,18 @@
-// const mysql = require('mysql'); // Remove this line
-const mysql = require('mysql2'); // Add this line
+// backend/src/config/db.js
+const mongoose = require('mongoose');
+require('dotenv').config(); // Load env vars
 
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '1234', // Consider using environment variables for credentials
-    database: 'user_details_db'
-});
+const connectDB = async () => {
+    try {
+        // Use the MONGODB_URI from your .env file
+        const conn = await mongoose.connect(process.env.MONGODB_URI);
 
-db.connect((err) => {
-    if (err) {
-        console.error('Database connection failed:', err);
-        process.exit(1); // Exit if connection fails on startup
-        // return; // Not needed if exiting
+        console.log(`MongoDB Connected: ${conn.connection.host}`);
+    } catch (error) {
+        console.error(`MongoDB Connection Error: ${error.message}`);
+        // Exit process with failure if connection fails
+        process.exit(1);
     }
-    console.log('Connected to database.');
-});
+};
 
-// Optional: Add error handling for the connection itself after initial connect
-db.on('error', function(err) {
-  console.error('Database error:', err);
-  // Example: Check for disconnect errors
-  if(err.code === 'PROTOCOL_CONNECTION_LOST') {
-    console.log('Attempting to reconnect...');
-    // Implement reconnection logic if needed
-  } else {
-    throw err; // Or handle other errors appropriately
-  }
-});
-
-
-module.exports = db;
+module.exports = connectDB;
