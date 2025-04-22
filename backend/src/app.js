@@ -9,8 +9,11 @@ connectDB();
 
 const app = express();
 
-// Middleware
-app.use(cors()); // Enable CORS for your frontend
+app.use(cors({
+    origin: 'https://webapp-form-frontend.onrender.com', // your frontend
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
+    credentials: true
+}));
 app.use(express.json({ limit: '10mb' })); // Allow larger payloads for images/screenshots
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
