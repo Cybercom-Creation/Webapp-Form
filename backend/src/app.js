@@ -10,7 +10,7 @@ connectDB();
 const app = express();
 
 app.use(cors({
-    origin: 'https://webapp-form-frontend.onrender.com', // your frontend
+    origin: '*', // your frontend
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
     credentials: true
 }));
