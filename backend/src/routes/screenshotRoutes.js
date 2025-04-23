@@ -13,7 +13,7 @@ const User = require('../models/User'); // Import the User model to find user na
 // It should likely take (userName, base64ScreenshotData, filename) as arguments
 // and return the Google Drive file ID.
 // Replace the line below with your actual import:
-const { uploadScreenshotToDrive } = require('../services/googleDriveService'); // <--- ADD YOUR ACTUAL IMPORT HERE
+const { uploadScreenshotToDrive } = require('../Services/googleDriveService'); // <--- ADD YOUR ACTUAL IMPORT HERE
 
 // --- POST /api/screenshots ---
 // Receives screenshot data and userId, looks up user name, uploads to Google Drive
