@@ -1044,7 +1044,7 @@ const Form = () => {
                     </p>
                         {/* Detection Status & Warnings */}
                         
-                        {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
+                        {/* {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
                             <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
                                 Warning: Multiple faces detected.
                             </p>
@@ -1053,7 +1053,33 @@ const Form = () => {
                             <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
                                 Warning: No face detected.
                             </p>
-                        )}
+                        )} */}
+
+                    {/* --- MODIFIED: Face Detection Warnings --- */}
+    {/* Warning for NO face detected */}
+    <p
+        className={`error-message ${
+            isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''
+        }`}
+        // Apply style only when visible to avoid applying orange color to the non-breaking space
+        style={
+            isCameraOn && isVideoReady && numberOfFacesDetected !== 1
+                ? { color: 'orange', fontWeight: 'bold' }
+                : {} // Empty style object when not visible
+        }
+    >
+        {/* Determine the message content */}
+        {isCameraOn && isVideoReady
+            ? numberOfFacesDetected === 0
+                ? 'Warning: No face detected.' // Message for 0 faces
+                : numberOfFacesDetected > 1
+                ? 'Warning: Multiple faces detected.' // Message for >1 faces
+                : '\u00A0' // Non-breaking space when 1 face (normal)
+            : '\u00A0' // Non-breaking space if camera isn't ready
+        }
+    </p>
+    {/* --- END MODIFICATION --- */}                    
+
 
                         {/* Live feed container */}
                         <div className="camera-live-container">
@@ -1066,9 +1092,9 @@ const Form = () => {
                                 style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
                             ></video>
                             {/* Placeholder when camera is off */}
-                            {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
+                            {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
-                            {isCameraAvailable === true && !isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
+                            {isCameraAvailable === true && !isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>} */}
                             {/* Hidden canvas for capture */}
                             <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
                         </div>
