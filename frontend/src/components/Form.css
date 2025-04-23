@@ -600,10 +600,16 @@ body {
 
   /* Styles for the audio visualization */
 .audio-visualization-container {
-    width: 150px; /* Match canvas width or be slightly larger */
-    height: 40px; /* Match canvas height */
+    width: 200px; /* Match canvas width or be slightly larger */
+    height: 60px; /* Match canvas height */
     /* margin-top: 10px; */ /* Already added margin-bottom to camera-box */
     text-align: center; /* Center the canvas if container is wider */
+    position: fixed;
+    top: 300px;
+    right: 20px;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
 }
 
 .audio-graph {

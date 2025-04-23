@@ -38,6 +38,18 @@ const Form = () => {
     const [currentWarningType, setCurrentWarningType] = useState(null);
     // --- END ADDED ---
 
+    // --- Configuration for Consecutive Noise Alert ---
+    const REQUIRED_CONSECUTIVE_NOISE_COUNT = 4; // Trigger after 4 consecutive violations
+    const NOISE_TIME_WINDOW_MS = 10000; // Within 10 seconds
+    const CONSECUTIVE_FRAME_TIME_MS = 3000; // Max time between frames to be considered consecutive (adjust if needed)
+    // --- End Configuration ---
+
+    // --- Refs to track consecutive noise ---
+    const consecutiveNoiseCountRef = useRef(0);
+    const firstNoiseViolationInSequenceTimestampRef = useRef(null);
+    const lastNoiseViolationTimestampRef = useRef(null); // To check for consecutiveness
+    // --- End Refs ---
+
     // --- Use the MediaPipe Face Detection Hook ---
     const {
         detectorReady,
@@ -833,83 +845,57 @@ const Form = () => {
         }
     }, [hookAudioError]);
 
-     // --- Effect for Noise Detection Logging/Warning Trigger ---
-     useEffect(() => {
-
-         // --- DEBUG LOG ---
-         console.log(`[Form.js Noise Effect] Running. isNoiseLevelHigh=${isNoiseLevelHigh}, isAudioMonitoring=${isAudioMonitoring}`);
-         // --- END DEBUG LOG ---
-         
-        // Only run this logic during the active test phase when audio is monitoring
-        if (submitted && userId && mediaStream && isAudioMonitoring && !isTimeOver) {
-            const currentTime = Date.now();
-
-            // --- Handle HIGH NOISE Detected ---
-            if (isNoiseLevelHigh) {
-                // Check if this is the start of the high noise event
-                if (noiseStartTime === null) {
-                    console.log("VIOLATION TRIGGER: High Noise Detected");
-                    setNoiseStartTime(currentTime);
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('high_noise');
-                    // setShowWarning(true);
-                }
-                else {
-                    // If noise is still high but start time is already set, do nothing (warning is already shown or was closed manually)
-                    console.log(`   [Noise Effect] Condition NOT MET for trigger: isNoiseLevelHigh=true, but noiseStartTime is NOT null (${noiseStartTime}). Doing nothing.`);
-               }
-            }
-            // --- Handle Noise Level NORMAL ---
-            else {
-                // Check if a high noise event was previously active
-                if (noiseStartTime !== null) {
-                    console.log("LOG EVENT DURATION END: High Noise");
-                    sendProctoringLog({
-                        userId: userId,
-                        triggerEvent: 'high_noise', // Use a specific event type
-                        startTime: noiseStartTime,
-                        endTime: currentTime
-                    });
-                    // Reset the start time and hide the persistent warning
-                    setNoiseStartTime(null);
-                    // setShowNoiseWarning(false);
-                    // If we were showing the temporary warning for noise, clear it too
-                    // if (showWarning && currentWarningType === 'high_noise') {
-                    //     setShowWarning(false);
-                    //     setWarningStartTime(null);
-                    //     setCurrentWarningType(null);
-                    // }
-                }
-                else {
-                    console.log("   [Noise Effect] Condition NOT MET for reset: isNoiseLevelHigh=false, and noiseStartTime is already null. Doing nothing.");
-               }
-            }
-        } else {
-            // Reset noise state if test becomes inactive or prerequisites aren't met
-            if (noiseStartTime !== null) {
-                // If the test ends while noise is high, log the end time
-                console.log("LOG EVENT DURATION END (Test Inactive): High Noise");
-                 sendProctoringLog({
-                     userId: userId, // userId might still be available
-                     triggerEvent: 'high_noise',
-                     startTime: noiseStartTime,
-                     endTime: Date.now() // Log with current time
-                 });
-                setNoiseStartTime(null);
-            }
-        //     if (showWarning && currentWarningType === 'high_noise') {
-        //         console.log("   [Noise Effect] Test inactive, hiding any active noise warning.");
-        //         setShowWarning(false);
-        //         setWarningStartTime(null);
-        //         setCurrentWarningType(null);
-        //    }
-            // setShowNoiseWarning(false); // Ensure warning is hidden when inactive
+    useEffect(() => {
+        if (!isAudioMonitoringActive) {
+            consecutiveNoiseCountRef.current = 0;
+            firstNoiseViolationInSequenceTimestampRef.current = null;
+            lastNoiseViolationTimestampRef.current = null;
+            return;
         }
+    
+        const now = Date.now();
+    
+        if (isNoiseLevelHigh) {
+            console.log(`[isNoiseLevelHigh] ${isNoiseLevelHigh}`);
+    
+            if (firstNoiseViolationInSequenceTimestampRef.current === null) {
+                // First violation
+                firstNoiseViolationInSequenceTimestampRef.current = now;
+                consecutiveNoiseCountRef.current = 1;
+            } else {
+                // Add to ongoing sequence
+                consecutiveNoiseCountRef.current += 1;
+            }
+    
+            lastNoiseViolationTimestampRef.current = now;
+    
+            const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
+            console.log(`[consecutiveNoiseCountRef] ${consecutiveNoiseCountRef.current}, Time since first: ${timeSinceFirst}ms`);
+    
+            if (
+                consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT &&
+                timeSinceFirst <= NOISE_TIME_WINDOW_MS
+            ) {
+                if (!showWarning || currentWarningType !== 'high_noise') {
+                    console.warn(`[Alert Triggered] ${consecutiveNoiseCountRef.current} violations in ${timeSinceFirst}ms`);
+                    setShowWarning(true);
+                    setCurrentWarningType('high_noise');
+                    setWarningStartTime(now);
+                }
+    
+                // Reset after alert
+                consecutiveNoiseCountRef.current = 0;
+                firstNoiseViolationInSequenceTimestampRef.current = null;
+                lastNoiseViolationTimestampRef.current = null;
+            }
+        } 
     }, [
-        isNoiseLevelHigh, submitted, userId, mediaStream, isAudioMonitoring, isTimeOver, // Key dependencies
-        noiseStartTime, sendProctoringLog, // State and functions used
-        showWarning, currentWarningType, setWarningStartTime, setCurrentWarningType
+        isNoiseLevelHigh,
+        isAudioMonitoringActive,
+        showWarning,
+        currentWarningType,
     ]);
+        
 
     // --- UPDATED: Effect for Drawing Audio Waveform Visualization ---
     useEffect(() => {
