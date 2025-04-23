@@ -27,10 +27,12 @@ const UserSchema = new mongoose.Schema({
         type: String, // Base64 data is a string
         required: [true, 'Initial photo is required'],
     },
+    photoDriveLink: { type: String },
     createdAt: {
         type: Date,
         default: Date.now,
     },
+    
 });
 
 module.exports = mongoose.model('User', UserSchema); // 'User' will be the collection name (pluralized to 'users')
