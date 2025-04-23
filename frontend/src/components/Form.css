@@ -1,3 +1,5 @@
+
+
 /* General body styling */
 body {
     font-family: 'Arial', sans-serif;
@@ -595,3 +597,25 @@ body {
   .retake-button:active {
       transform: scale(0.98);
   }
+
+  /* Styles for the audio visualization */
+.audio-visualization-container {
+    width: 150px; /* Match canvas width or be slightly larger */
+    height: 40px; /* Match canvas height */
+    /* margin-top: 10px; */ /* Already added margin-bottom to camera-box */
+    text-align: center; /* Center the canvas if container is wider */
+}
+
+.audio-graph {
+    border: 1px solid #aaa;
+    background-color: #f9f9f9; /* Default background */
+    display: inline-block; /* Allows centering via text-align on parent */
+    vertical-align: top; /* Align with other inline elements if any */
+}
+
+.audio-error {
+    color: red;
+    font-size: 0.8em;
+    text-align: center;
+    margin-top: 5px; /* Space above error message */
+}

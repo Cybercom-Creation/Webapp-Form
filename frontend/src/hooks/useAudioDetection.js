@@ -4,26 +4,32 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 // --- Configuration ---
 const NOISE_THRESHOLD_DB = -5; // Example threshold in dBFS (-40 is moderate background noise)
 const SMOOTHING_TIME_CONSTANT = 0.1;
-const FFT_SIZE = 256;
+const FFT_SIZE = 1024;
 
 export const useAudioDetection = (isActive) => {
     const [isAboveThreshold, setIsAboveThreshold] = useState(false);
     const [currentDecibels, setCurrentDecibels] = useState(-Infinity);
     const [audioError, setAudioError] = useState(null);
     const [isMonitoring, setIsMonitoring] = useState(false);
+    // --- ADDED: State for waveform data ---
+    const [waveformArray, setWaveformArray] = useState(null);
+    // --- END ADDED ---
 
     const audioContextRef = useRef(null);
     const analyserRef = useRef(null);
     const mediaStreamSourceRef = useRef(null);
     const audioStreamRef = useRef(null);
     const animationFrameRef = useRef(null);
-    const dataArrayRef = useRef(null);
+    const frequencyDataArrayRef  = useRef(null);
     // Ref to track if we are *currently* in the process of starting/stopping
     const processingRef = useRef(false);
+    // --- ADDED: Ref for time domain data array ---
+    const timeDomainDataArrayRef = useRef(null);
+    // --- END ADDED ---
 
     // --- Analyse Audio Function ---
     const analyseAudio = useCallback(() => {
-        if (!analyserRef.current || !dataArrayRef.current || !isMonitoring) {
+        if (!analyserRef.current || !frequencyDataArrayRef.current || !isMonitoring) {
             // Added !isMonitoring check here for safety
             // console.warn("AnalyseAudio called but analyser/dataArray not ready or not monitoring.");
             animationFrameRef.current = null; // Ensure loop stops if state is wrong
@@ -31,15 +37,24 @@ export const useAudioDetection = (isActive) => {
         }
 
         try {
-            analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+            analyserRef.current.getByteFrequencyData(frequencyDataArrayRef.current);
 
             let sumSquares = 0;
-            for (const amplitude of dataArrayRef.current) {
-                const normalizedAmplitude = (amplitude / 128.0) - 1.0;
+            for (const amplitude of frequencyDataArrayRef.current) {
+                const normalizedAmplitude = amplitude / 256;
                 sumSquares += normalizedAmplitude * normalizedAmplitude;
             }
-            const rms = Math.sqrt(sumSquares / dataArrayRef.current.length);
+            const rms = Math.sqrt(sumSquares / frequencyDataArrayRef.current.length);
             const dbfs = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+
+             // --- Get Time Domain Data (for waveform visualization) ---
+             analyserRef.current.getByteTimeDomainData(timeDomainDataArrayRef.current);
+             // Update state with a *copy* of the data for rendering
+             setWaveformArray(new Uint8Array(timeDomainDataArrayRef.current));
+ 
+             // --- DEBUG LOG ---
+             // console.log(`[useAudioDetection] Analysing... dBFS: ${calculatedDbFs.toFixed(2)} (Threshold: ${NOISE_THRESHOLD_DB})`);
+             // --- END DEBUG LOG ---
 
             // --- DEBUG LOG ---
             // Log frequently to see if analysis is running and the detected level
@@ -47,7 +62,7 @@ export const useAudioDetection = (isActive) => {
             // --- END DEBUG LOG ---
 
             setCurrentDecibels(dbfs);
-            const currentlyAbove = dbfs < NOISE_THRESHOLD_DB;
+            const currentlyAbove = dbfs > NOISE_THRESHOLD_DB;
 
             // Update state only on change
             setIsAboveThreshold(prev => {
@@ -122,6 +137,7 @@ export const useAudioDetection = (isActive) => {
         // Reset state *after* cleanup attempts
         setIsAboveThreshold(false);
         setCurrentDecibels(-Infinity);
+        setWaveformArray(null); // << RESET WAVEFORM
         setIsMonitoring(false); // Mark as not monitoring
         // Keep audioError unless explicitly cleared elsewhere
         console.log("   Audio monitoring state reset.");
@@ -182,8 +198,12 @@ export const useAudioDetection = (isActive) => {
             analyserRef.current = analyser;
             console.log("   AnalyserNode created");
 
-            dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
-            console.log("   Data array allocated, size:", analyser.frequencyBinCount);
+           // --- Allocate Data Arrays ---
+           frequencyDataArrayRef.current = new Uint8Array(analyser.frequencyBinCount); // Size = fftSize / 2
+           timeDomainDataArrayRef.current = new Uint8Array(analyser.fftSize); // Size = fftSize
+           console.log("   Frequency data array size:", analyser.frequencyBinCount);
+           console.log("   Time domain data array size:", analyser.fftSize);
+           // --- End Allocate ---
 
             const source = context.createMediaStreamSource(stream);
             mediaStreamSourceRef.current = source;
@@ -239,7 +259,7 @@ export const useAudioDetection = (isActive) => {
             else if (isMonitoring && !animationFrameRef.current) {
                  console.log("Audio Hook Effect: isMonitoring is TRUE and loop not running. Starting analysis loop.");
                  // Ensure analyser is ready before starting loop (should be if isMonitoring is true)
-                 if (analyserRef.current && dataArrayRef.current) {
+                 if (analyserRef.current && frequencyDataArrayRef.current) {
                     animationFrameRef.current = requestAnimationFrame(analyseAudio);
                  } else {
                     console.warn("Audio Hook Effect: isMonitoring true, but analyser/dataArray not ready. Cannot start loop yet.");
@@ -284,5 +304,5 @@ export const useAudioDetection = (isActive) => {
     // analyseAudio, startAudioMonitoring, stopAudioMonitoring are stable callbacks.
     }, [isActive, isMonitoring, analyseAudio, startAudioMonitoring, stopAudioMonitoring]); // <-- CRITICAL: Only depend on isActive
 
-    return { isAboveThreshold, currentDecibels, audioError, isMonitoring };
+    return { isAboveThreshold, currentDecibels, audioError, isMonitoring, waveformArray };
 };

@@ -59,6 +59,9 @@ const Form = () => {
     const [isFaceDetectionGracePeriod, setIsFaceDetectionGracePeriod] = useState(false);
     const [audioSetupError, setAudioSetupError] = useState(null);
     const [noiseStartTime, setNoiseStartTime] = useState(null);
+    // --- ADDED: Ref for the audio visualization canvas ---
+    const audioCanvasRef = useRef(null);
+    // --- END ADDED ---
 
      // --- Use the Audio Level Detection Hook ---
      const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver; // Condition to run audio hook
@@ -66,7 +69,8 @@ const Form = () => {
          isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
          currentDecibels, // Optional: for debugging/display
          audioError: hookAudioError, // Get error from hook
-         isMonitoring: isAudioMonitoring // Check if hook is actively monitoring
+         isMonitoring: isAudioMonitoring, // Check if hook is actively monitoring
+         waveformArray
      } = useAudioDetection(isAudioMonitoringActive);
 
     // --- Validation Functions (Unchanged) ---
@@ -752,7 +756,7 @@ const Form = () => {
                     'Content-Type': 'application/json',
                 },
                 // Send both screenshot and userId
-                body: JSON.stringify({ screenshot, userId }), // <-- UPDATED HERE
+                body: JSON.stringify({ screenshotData: screenshot, userId: userId }), // <-- UPDATED HERE
             });
  
             // It's good practice to check the response status
@@ -779,7 +783,7 @@ const Form = () => {
             const interval = setInterval(() => {
                 console.log('Capturing periodic screenshot...');
                 captureScreenshot();
-            }, 2 * 60 * 1000); // 2 minutes
+            }, 1 * 30 * 1000); // 2 minutes
             return () => clearInterval(interval);
         }
     }, [submitted, mediaStream, captureScreenshot, userId, isTimeOver]);
@@ -848,7 +852,7 @@ const Form = () => {
                     setNoiseStartTime(currentTime);
                     setWarningStartTime(currentTime);
                     setCurrentWarningType('high_noise');
-                    setShowWarning(true);
+                    // setShowWarning(true);
                 }
                 else {
                     // If noise is still high but start time is already set, do nothing (warning is already shown or was closed manually)
@@ -906,6 +910,81 @@ const Form = () => {
         noiseStartTime, sendProctoringLog, // State and functions used
         showWarning, currentWarningType, setWarningStartTime, setCurrentWarningType
     ]);
+
+    // --- UPDATED: Effect for Drawing Audio Waveform Visualization ---
+    useEffect(() => {
+        const canvas = audioCanvasRef.current;
+        if (!canvas) return; // Exit if canvas ref is not ready
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // --- Clear Canvas ---
+        ctx.clearRect(0, 0, width, height);
+
+        // --- Draw based on state ---
+        if (submitted && mediaStream && isAudioMonitoring && waveformArray && waveformArray.length > 0) {
+            // --- Draw Background ---
+            ctx.fillStyle = '#f0f0f0'; // Light grey background
+            ctx.fillRect(0, 0, width, height);
+
+            // --- Draw Center Line ---
+            ctx.lineWidth = 0.5;
+            ctx.strokeStyle = '#aaaaaa';
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+
+            // --- Draw Waveform ---
+            ctx.lineWidth = 1.5; // Slightly thicker line
+            // Set color based on noise level threshold
+            ctx.strokeStyle = isNoiseLevelHigh ? '#e74c3c' : '#3498db'; // Red if high, Blue if normal
+
+            ctx.beginPath();
+
+            const sliceWidth = width * 1.0 / waveformArray.length;
+            let x = 0;
+
+            for (let i = 0; i < waveformArray.length; i++) {
+                // Normalize the 0-255 value to a range around the center line
+                // Value 128 is silence (center)
+                const v = waveformArray[i] / 128.0; // Normalize to 0-2 range
+                const y = (v - 1.0) * (height * 0.4) + (height / 2); // Center vertically, scale amplitude
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            // ctx.lineTo(width, height / 2); // Connect end back to center? Optional.
+            ctx.stroke(); // Draw the path
+
+            // --- Draw dBFS Text (Optional) ---
+            ctx.fillStyle = isNoiseLevelHigh ? '#c0392b' : '#2980b9'; // Darker Red/Blue
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`${currentDecibels.toFixed(1)} dBFS`, width - 5, 2);
+
+        } else {
+            // --- Draw Disabled State ---
+             ctx.fillStyle = '#cccccc'; // Grey background
+             ctx.fillRect(0, 0, width, height);
+             ctx.fillStyle = '#666666';
+             ctx.font = '12px Arial';
+             ctx.textAlign = 'center';
+             ctx.textBaseline = 'middle';
+             ctx.fillText('Audio Monitor Off', width / 2, height / 2);
+        }
+    // Dependencies: Draw when waveform data changes, threshold state changes, or monitoring status changes
+    }, [waveformArray, isNoiseLevelHigh, currentDecibels, submitted, mediaStream, isAudioMonitoring]);
+    // --- END UPDATED ---
 
     // ... (No changes needed here)
     const isSubmitDisabled =
@@ -1047,6 +1126,16 @@ const Form = () => {
                             {/* Optional: Display current decibel level for debugging */}
                             {/* {isAudioMonitoring && <p>Audio Level: {currentDecibels.toFixed(1)} dBFS</p>} */}
                         </div>
+                         {/* --- ADDED: Audio Visualization Canvas --- */}
+                         <div className="audio-visualization-container">
+                                <canvas
+                                    ref={audioCanvasRef}
+                                    width="180" // Adjust width as needed
+                                    height="60" // Adjust height as needed
+                                    className="audio-graph"
+                                ></canvas>
+                            </div>
+                            {/* --- END ADDED --- */}
                         <iframe
                             src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
                             className="google-form-iframe"
