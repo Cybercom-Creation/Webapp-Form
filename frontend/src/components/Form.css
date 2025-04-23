@@ -71,25 +71,23 @@ body {
     outline: none;
 }
 
-/* Error message styling - CORRECTED */
+/* Error message styling - UPDATED */
 .error-message {
-    color: #dc3545; /* A standard Bootstrap danger red */
-    font-size: 0.8rem; /* Slightly smaller font size */
-    margin-top: 4px;   /* Add a small space above the error */
-    margin-bottom: 5px; /* Add some space below before the next element */
-    height: auto;      /* Let height adjust to content */
-    line-height: 1.2;  /* Set a normal line height */
-    visibility: hidden;/* Keep hidden by default */
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out, visibility 0s linear 0.3s; /* Delay visibility change */
-    display: inline-block;
-    min-height: 1em; /* Reserve a minimum space to prevent layout jumps */
+    color: #dc3545;           /* A standard Bootstrap danger red */
+    font-size: 0.8rem;         /* Slightly smaller font size */
+    margin-top: 4px;           /* Add a small space above the error */
+    margin-bottom: 5px;        /* Add some space below before the next element */
+    line-height: 1.2;          /* Set a normal line height */
+    min-height: 1.2em;         /* Reserve space for at least one line */
+    display: block;            /* Make it take full width */
+    opacity: 0;                /* Hidden by default (transparent) */
+    transition: opacity 0.3s ease-in-out; /* Transition only opacity */
+    height: auto;              /* Allow height to grow for multi-line errors */
 }
 
 .error-message.visible {
-    visibility: visible; /* Make it visible */
-    opacity: 1;
-    transition: opacity 0.3s ease-in-out, visibility 0s; /* Immediate visibility change */
+    opacity: 1;                /* Make it visible (fully opaque) */
+    /* No need for visibility change here anymore */
 }
 .camera-live-container {
     position: relative; /* <<< MUST BE PRESENT AND CORRECT */
@@ -281,6 +279,25 @@ body {
 .success-message a:hover {
     text-decoration: underline;
 }
+
+.submit-button:disabled {
+    background-color: #cccccc; /* Light grey background */
+    color: #666666;          /* Darker grey text */
+    cursor: not-allowed;     /* Show 'not allowed' cursor on hover */
+    transform: none;         /* Prevent scaling on hover/active when disabled */
+    box-shadow: none;        /* Remove any potential shadows */
+    opacity: 0.7;            /* Slightly fade it out (optional) */
+  }
+  
+  /* Optional: Ensure hover/active states don't override disabled style */
+  .submit-button:hover:disabled {
+    background-color: #cccccc; /* Keep grey background on hover */
+    transform: none;         /* Prevent scaling */
+  }
+  
+  .submit-button:active:disabled {
+    transform: none;         /* Prevent scaling on click */
+  }
 
 /* Blocked message styling */
 .blocked-message {

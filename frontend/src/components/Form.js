@@ -18,7 +18,7 @@ const Form = () => {
     const [nameError, setNameError] = useState('');
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
-    const [cameraError, setCameraError] = useState('');
+    //const [cameraError, setCameraError] = useState('');
     const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false);
 
     // --- State for Camera ---
@@ -28,6 +28,13 @@ const Form = () => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null); // Still needed for capture during submit
     const isInitialCameraStopped = useRef(false); // Ref to track if initial camera stop was triggered
+    const [cameraError, setCameraError] = useState(''); // For operational errors (start failed, etc.)
+
+    // --- NEW: State for Initial Camera Availability Check ---
+    const [isCameraAvailable, setIsCameraAvailable] = useState(null); // null = checking, false = not found/error, true = found
+    const [cameraAvailabilityError, setCameraAvailabilityError] = useState(''); // Specific error for the initial check
+
+
 
     // --- ADDED: State for face detection event timing ---
     const [noFaceStartTime, setNoFaceStartTime] = useState(null);
@@ -106,6 +113,21 @@ const Form = () => {
     }, []); // No dependencies needed
 
     const startCamera = useCallback(async (phase = 'initial') => {
+
+        // --- ADDED: Check if camera was found available initially ---
+        if (isCameraAvailable === false) {
+            console.log(`startCamera (${phase}): Aborting. Initial check found no camera available.`);
+            // Ensure the availability error is shown if not already
+            if (!cameraAvailabilityError) {
+                setCameraAvailabilityError('Camera is required to process further.');
+            }
+            return; // Don't try to start if check failed
+        }
+        // --- END ADDED ---
+
+
+
+
         // Check if already on/starting to prevent race conditions
         // Use local check before async call
         if (isCameraOn || cameraStream) {
@@ -155,7 +177,46 @@ const Form = () => {
         }
     // Dependencies: detectorReady (condition), stopCamera (internal safety net)
     // Avoid isCameraOn/cameraStream here to break loops, rely on check inside.
-    }, [detectorReady, stopCamera]);
+    }, [detectorReady, stopCamera, isCameraAvailable, cameraAvailabilityError]);
+
+
+    // --- NEW Effect: Initial Camera Availability Check ---
+    useEffect(() => {
+        // Only run this check once when the component mounts and before submission
+        if (!submitted && isCameraAvailable === null) { // Check only if status is 'checking' (null)
+            const checkCameraAvailability = async () => {
+                console.log(">>> Effect (Camera Check): Running initial camera availability check...");
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    console.warn("Effect (Camera Check): MediaDevices API not supported.");
+                    setCameraAvailabilityError('Your browser does not support camera detection.');
+                    setIsCameraAvailable(false);
+                    return;
+                }
+
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const hasVideoInput = devices.some(device => device.kind === 'videoinput');
+
+                    if (hasVideoInput) {
+                        console.log("Effect (Camera Check): Camera detected.");
+                        setIsCameraAvailable(true);
+                        setCameraAvailabilityError(''); // Clear any error
+                    } else {
+                        console.warn("Effect (Camera Check): No camera detected.");
+                        setIsCameraAvailable(false);
+                        setCameraAvailabilityError('Camera is required to process further.');
+                    }
+                } catch (err) {
+                    console.error("Effect (Camera Check): Error enumerating devices:", err);
+                    setIsCameraAvailable(false);
+                    // Provide a slightly different error for enumeration issues vs. not found
+                    setCameraAvailabilityError('Could not check for camera. Please ensure permissions are allowed if prompted previously.');
+                }
+            };
+
+            checkCameraAvailability();
+        }
+    }, [submitted, isCameraAvailable]); // Run when submitted changes or check state changes (but logic prevents re-run after initial check)
 
 
     // --- Effect 1: Initial Camera Start ---
@@ -910,6 +971,7 @@ const Form = () => {
 
     // ... (No changes needed here)
     const isSubmitDisabled =
+        isCameraAvailable === null || // Still checking for camera
         !name || !!nameError ||
         !email || !!emailError ||
         !phone || !!phoneError ||
@@ -935,7 +997,11 @@ const Form = () => {
                             onBlur={() => checkFieldExists('name', name, setNameError)}
                             required aria-invalid={!!nameError} aria-describedby="name-error"
                         />
-                        {nameError && <p id="name-error" className={`error-message ${nameError ? 'visible' : ''}`}>{nameError}</p>}
+                       {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                        <p id="name-error" className={`error-message ${nameError ? 'visible' : ''}`}>
+                        {/* Display the error message text, or a non-breaking space to maintain height */}
+                        {nameError || '\u00A0'}
+                         </p>
                     </div>
                     <div className="form-group">
                         <label htmlFor="email">Email:</label>
@@ -945,7 +1011,10 @@ const Form = () => {
                             onBlur={() => checkFieldExists('email', email, setEmailError)}
                             required aria-invalid={!!emailError} aria-describedby="email-error"
                         />
-                        {emailError && <p id="email-error" className={`error-message ${emailError ? 'visible' : ''}`}>{emailError}</p>}
+                      {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                    <p id="email-error" className={`error-message ${emailError ? 'visible' : ''}`}>
+                    {emailError || '\u00A0'}
+                    </p>
                     </div>
                     <div className="form-group">
                         <label htmlFor="phone">Phone Number:</label>
@@ -955,17 +1024,24 @@ const Form = () => {
                             onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
                             required aria-invalid={!!phoneError} aria-describedby="phone-error"
                         />
-                        {phoneError && <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError}</p>}
+                        {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                        <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>
+                        {phoneError || '\u00A0'}
+                        </p>
                     </div>
 
 
                     {/* --- Camera Section (Simplified) --- */}
                     <div className="form-group camera-section">
+
+                    {/* --- NEW: Display Initial Camera Availability Error --- */}
+                    {cameraAvailabilityError && <p className="error-message visible">{cameraAvailabilityError}</p>}
+
                         
-
-                        {/* Camera Error Display */}
-                        {cameraError && <p className="error-message visible">{cameraError}</p>}
-
+                    {/* Apply same logic if cameraError causes shifts */}
+                    <p className={`error-message ${cameraError ? 'visible' : ''}`}>
+                    {cameraError || '\u00A0'}
+                    </p>
                         {/* Detection Status & Warnings */}
                         
                         {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
@@ -991,14 +1067,19 @@ const Form = () => {
                             ></video>
                             {/* Placeholder when camera is off */}
                             {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
+                            {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
+                            {isCameraAvailable === true && !isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {/* Hidden canvas for capture */}
                             <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
                         </div>
                     </div>
                     {/* --- End Camera Section --- */}
 
-                    {/* General Form Error */}
-                    {error && <p className="error-message visible">{error}</p>}
+                    {/* // --- General Form Error (if you want the same behavior) --- */}
+                    {/* Apply same logic if general error causes shifts */}
+                    <p className={`error-message ${error ? 'visible' : ''}`}>
+                    {error || '\u00A0'}
+                    </p>
 
                     {/* Submit Button */}
                     <button
@@ -1007,14 +1088,18 @@ const Form = () => {
                         disabled={isSubmitDisabled} // Use the calculated disabled state
                     >
                         {isSubmitDisabled
-                            ? !detectorReady
+                        ? isCameraAvailable === null
+                        ? 'Checking Camera...' // NEW
+                        : !isCameraAvailable
+                        ? 'Camera Required' // NEW
+                        : !detectorReady
                                 ? 'Loading Detector...'
                                 : !isCameraOn
                                 ? 'Starting Camera...'
                                 : !isVideoReady
                                 ? 'Initializing Camera...'
                                 : (!name || !!nameError || !email || !!emailError || !phone || !!phoneError)
-                                ? 'Capture & Submit'
+                                ?  'Fill Details Correctly' // Changed for clarity
                                 : numberOfFacesDetected !== 1
                                 ? 'Align Face (1 needed)'
                                 : 'Check Conditions' // Fallback disabled text
