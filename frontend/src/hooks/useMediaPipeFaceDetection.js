@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 // --- Configuration ---
 const DETECTION_INTERVAL_MS = 500; // How often to run detection while camera is on
 
-export const useMediaPipeFaceDetection = (videoRef, isCameraActive) => {
+export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady) => {
     const [detectorReady, setDetectorReady] = useState(false);
     const [detectionStatus, setDetectionStatus] = useState('Initializing detector...');
     const [faceDetectedBox, setFaceDetectedBox] = useState(null);
@@ -112,78 +112,139 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive) => {
         };
     }, [videoRef]); // videoRef is the only dependency needed here
 
-    // --- Function to Send Frame for Detection ---
-    // This function's identity should only change if detectorReady or videoRef changes.
+     // --- Function to Send Frame for Detection ---
+    // (Includes status update refinement from previous step)
     const sendFrameForDetection = useCallback(async () => {
+        // console.log("[sendFrame] Called."); // Keep logging enabled for debugging
         const videoElement = videoRef.current;
         const detector = detectorRef.current;
+        let videoStillNotReady = false; // Flag
 
-        // Check conditions before sending
-        if (!detectorReady || !detector || !resultsListenerAdded.current || !videoElement || videoElement.paused || videoElement.ended || videoElement.readyState < 3 || videoElement.videoWidth === 0) {
-            // No need to reset state here, the interval cleanup or handleResults will do it.
-            return;
+        // --- Core Checks ---
+        if (!detectorReady) { console.warn("[sendFrame] Exit: detector not ready"); return; }
+        if (!detector) { console.warn("[sendFrame] Exit: detector ref null"); return; }
+        if (!resultsListenerAdded.current) { console.warn("[sendFrame] Exit: results listener not added"); return; }
+        if (!videoElement) { console.warn("[sendFrame] Exit: video element null"); return; }
+        if (videoElement.paused) { console.warn("[sendFrame] Exit: video paused"); return; }
+        if (videoElement.ended) { console.warn("[sendFrame] Exit: video ended"); return; }
+
+        // --- Video Readiness Checks ---
+        if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA
+            console.warn(`[sendFrame] Video not ready: readyState is ${videoElement.readyState} (< 3).`);
+            videoStillNotReady = true;
+        }
+        if (videoElement.videoWidth === 0) {
+            console.warn("[sendFrame] Video not ready: videoWidth is 0.");
+            videoStillNotReady = true;
         }
 
+        // --- Status Update and Return if Video Not Ready ---
+        if (videoStillNotReady) {
+            setDetectionStatus(prevStatus => {
+                const waitingMsg = 'Waiting for video frame data...';
+                if (prevStatus !== waitingMsg) {
+                    console.log("[sendFrame] Updating status to indicate waiting for video frame data.");
+                    return waitingMsg;
+                }
+                return prevStatus; // Avoid unnecessary state update
+            });
+            return; // Stop processing this frame
+        }
+        // --- End Status Update ---
+
+        // --- If Video IS Ready, Ensure Status Reflects Active Detection ---
+        setDetectionStatus(prevStatus => {
+             // If it was waiting, mark as active now. Otherwise, keep existing active/face status.
+             if (prevStatus === 'Waiting for video frame data...') {
+                 console.log("[sendFrame] Video frame data ready, setting status to 'Detection active.'");
+                 return 'Detection active.';
+             }
+             // If status is already related to face count, keep it.
+             if (prevStatus.includes('face detected')) {
+                 return prevStatus;
+             }
+             // Otherwise, ensure it's generally 'active' if not waiting or showing face count.
+             if (prevStatus !== 'Detection active.') {
+                 return 'Detection active.';
+             }
+             return prevStatus;
+        });
+
+        // --- Proceed with Detection ---
+        console.log("[sendFrame] All checks passed. Calling detector.send...");
         try {
             if (typeof detector.send !== 'function') {
                  console.error("detector.send is not a function");
                  setDetectionStatus('Error: detector.send not available.');
                  return;
             }
-            // console.log("Sending frame..."); // Optional: Log frame sending
             await detector.send({image: videoElement});
-            // Results are handled by the 'onResults' listener
+            // Results handled by onResults listener
         } catch (error) {
             console.error("useMediaPipeFaceDetection: Error sending frame:", error);
-            // Don't set status here if it might conflict with handleResults
-            // setDetectionStatus(`Error during detection: ${error.message}`);
-            // Let handleResults clear the state if no detections come through after error
+            setDetectionStatus(`Error during detection: ${error.message}`);
+            // Reset state on error? Maybe let onResults handle lack of detections.
+            setFaceDetectedBox(null);
+            setNumberOfFaces(0);
         }
-    // --- REMOVED faceDetectedBox, numberOfFaces from dependencies ---
     }, [detectorReady, videoRef]);
-    // --- END REMOVAL ---
 
-    // --- Start/Stop Detection Interval ---
-    // This effect should only re-run if isCameraActive, detectorReady, or the sendFrameForDetection function reference changes.
+     // --- Start/Stop Detection Interval ---
+    // <<< SIMPLIFIED: Removed isVideoReady from condition and dependencies >>>
     useEffect(() => {
+        console.log(`[Interval Effect Check] Running. isCameraActive=${isCameraActive}, detectorReady=${detectorReady}`); // Log dependencies
+
+        // --- Condition now ONLY depends on camera intent and detector readiness ---
         if (isCameraActive && detectorReady) {
-            console.log("useMediaPipeFaceDetection: Starting detection interval.");
+            console.log("useMediaPipeFaceDetection: Conditions met (Camera Active, Detector Ready). Starting detection interval.");
+            // Set initial status, sendFrameForDetection will refine if video isn't ready yet
+            setDetectionStatus('Detection active.');
+
             if (detectionIntervalRef.current) {
                 clearInterval(detectionIntervalRef.current); // Clear just in case
             }
             sendFrameForDetection(); // Run once immediately
             detectionIntervalRef.current = setInterval(sendFrameForDetection, DETECTION_INTERVAL_MS);
 
-            // Cleanup function for THIS effect instance
-            return () => {
-                console.log("useMediaPipeFaceDetection: Clearing detection interval.");
-                if (detectionIntervalRef.current) {
-                    clearInterval(detectionIntervalRef.current);
-                    detectionIntervalRef.current = null;
-                }
-                // Reset state when interval stops or dependencies change
-                setFaceDetectedBox(null);
-                setNumberOfFaces(0);
-                setDetectionStatus('Detection stopped.');
-            };
         } else {
-            // Clear interval if conditions are not met
+            // Conditions not met, ensure interval is cleared
             if (detectionIntervalRef.current) {
-                console.log("useMediaPipeFaceDetection: Clearing detection interval (conditions not met).");
+                console.log("useMediaPipeFaceDetection: Clearing detection interval (conditions not met: cameraActive or detectorReady).");
                 clearInterval(detectionIntervalRef.current);
                 detectionIntervalRef.current = null;
             }
-            // Update status and reset state if detection isn't running
-            if (!detectorReady) setDetectionStatus('Waiting for detector...');
-            else if (!isCameraActive) setDetectionStatus('Camera off.');
 
-            // Ensure state is reset if detection stops
+            // Update status based on why it's not running
+            if (!detectorReady) {
+                setDetectionStatus('Waiting for detector...');
+            } else if (!isCameraActive) {
+                setDetectionStatus('Camera off.');
+            } else {
+                 setDetectionStatus('Detection stopped.'); // General fallback
+            }
+
+            // Ensure state is reset if detection stops/isn't running
             if (faceDetectedBox !== null) setFaceDetectedBox(null);
             if (numberOfFaces !== 0) setNumberOfFaces(0);
         }
-    // --- REMOVED faceDetectedBox, numberOfFaces from dependencies ---
-    }, [isCameraActive, detectorReady, sendFrameForDetection]);
-    // --- END REMOVAL ---
+
+        // Cleanup function for THIS effect instance
+        return () => {
+            console.log("useMediaPipeFaceDetection: Interval Effect Cleanup.");
+            if (detectionIntervalRef.current) {
+                clearInterval(detectionIntervalRef.current);
+                detectionIntervalRef.current = null;
+            }
+            // Optionally reset status/state here too, though the main block handles it
+            // setDetectionStatus('Detection stopped.');
+            // setFaceDetectedBox(null);
+            // setNumberOfFaces(0);
+        };
+
+    // <<< Dependencies: isCameraActive, detectorReady, sendFrameForDetection (stable), videoRef (stable) >>>
+    // <<< REMOVED isVideoReady >>>
+    }, [isCameraActive, detectorReady, sendFrameForDetection, videoRef]);
+    // --- END SIMPLIFICATION ---
 
 
     // --- Function to get the latest detected box (for capture) ---
