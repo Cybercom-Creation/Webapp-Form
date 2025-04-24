@@ -11,6 +11,7 @@ const Form = () => {
     const [phone, setPhone] = useState('');
     const [userId, setUserId] = useState(null); // To store the user's ID after submission
     const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
+    const [isLoading, setIsLoading] = useState(false);
 
     // --- State for Form Flow & Errors ---
     const [submitted, setSubmitted] = useState(false); // True ONLY when test phase begins
@@ -487,6 +488,8 @@ const Form = () => {
         const capturedPhotoBase64 = captureResult.photoBase64;
         console.log("handleSubmit: Face photo captured successfully.");
 
+        setIsLoading(true);
+
         // 4. Prepare data and submit
         const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
         console.log("Submitting form with captured photo...");
@@ -518,6 +521,7 @@ const Form = () => {
                 // Set flag to prevent Effect 2 cleanup from stopping camera if requestScreenCapture stops it first.
                 isInitialCameraStopped.current = true; // Mark that we intend to stop/restart
                 console.log("handleSubmit success: Marked initial camera stop flag.");
+                setIsLoading(false); // Stop loading spinner
                 setShowInstructions(true); // Proceed to instructions
             } else {
                 console.error("Submission successful, but User ID not received!");
@@ -526,6 +530,9 @@ const Form = () => {
         } catch (err) {
             console.error("Caught submission error:", err);
             setError(err.message || 'An unexpected error occurred during submission.');
+        }
+        finally{
+
         }
     };
 
@@ -1176,9 +1183,14 @@ const Form = () => {
                     <button
                         type="submit"
                         className="submit-button"
-                        disabled={isSubmitDisabled} // Use the calculated disabled state
+                        disabled={isLoading ||isSubmitDisabled} // Use the calculated disabled state
                     >
-                        {isSubmitDisabled
+                        {/* Show spinner ONLY when isLoading is true */}
+                        {isLoading && <div className="spinner"></div>}
+
+                        {isLoading
+                        ? 'Submitting...' 
+                        : isSubmitDisabled
                         ? isCameraAvailable === null
                         ? 'Checking Camera...' // NEW
                         : !isCameraAvailable
@@ -1199,6 +1211,10 @@ const Form = () => {
                 </form>
             ) : submitted && mediaStream ? ( // Test Area (Test Started and Screen Sharing Active)
                 <div className="google-form-page">
+                   
+                    
+                    
+                    
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
                             <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p>
@@ -1225,6 +1241,31 @@ const Form = () => {
                             {/* {isAudioMonitoring && <p>Audio Level: {currentDecibels.toFixed(1)} dBFS</p>} */}
                         </div>
                          {/* --- ADDED: Audio Visualization Canvas --- */}
+
+                         <div className="user-details-display enhanced overlay top-left"> {/* Add overlay classes */}
+                        <div className="user-details-header">
+                            {/* Optional: Icon */}
+                            {/* <FaUserCircle className="user-icon" /> */}
+                            <h3>Candidate Details</h3>
+                        </div>
+                        <div className="user-details-body">
+                            <div className="detail-item">
+                                {/* <FaUserCircle className="detail-icon" /> */}
+                                <span className="detail-label">Name:</span>
+                                <span className="detail-value">{name}</span>
+                            </div>
+                            <div className="detail-item">
+                                {/* <FaEnvelope className="detail-icon" /> */}
+                                <span className="detail-label">Email:</span>
+                                <span className="detail-value">{email}</span>
+                            </div>
+                            <div className="detail-item">
+                                {/* <FaPhone className="detail-icon" /> */}
+                                <span className="detail-label">Phone:</span>
+                                <span className="detail-value">{phone}</span>
+                            </div>
+                        </div>
+                    </div>
                          <div className="audio-visualization-container">
                                 <canvas
                                     ref={audioCanvasRef}
