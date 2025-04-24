@@ -908,49 +908,83 @@ const Form = () => {
     }, [hookAudioError]);
 
     useEffect(() => {
+        // --- Reset everything if monitoring stops ---
         if (!isAudioMonitoringActive) {
             consecutiveNoiseCountRef.current = 0;
             firstNoiseViolationInSequenceTimestampRef.current = null;
             lastNoiseViolationTimestampRef.current = null;
+            // console.log("[Noise Effect] Monitoring stopped, resetting counters.");
             return;
         }
-    
+
         const now = Date.now();
-    
+
         if (isNoiseLevelHigh) {
-            console.log(`[isNoiseLevelHigh] ${isNoiseLevelHigh}`);
-    
+            console.log(`[Noise Effect] High noise detected at ${now}`);
+
             if (firstNoiseViolationInSequenceTimestampRef.current === null) {
-                // First violation
+                // --- Case 1: This is the FIRST violation in a potential sequence ---
+                console.log("   Starting new noise sequence.");
                 firstNoiseViolationInSequenceTimestampRef.current = now;
+                lastNoiseViolationTimestampRef.current = now; // Record the time of this violation
                 consecutiveNoiseCountRef.current = 1;
+                console.log(`   [consecutiveNoiseCountRef] set to 1. First timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
+
             } else {
-                // Add to ongoing sequence
-                consecutiveNoiseCountRef.current += 1;
-            }
-    
-            lastNoiseViolationTimestampRef.current = now;
-    
-            const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
-            console.log(`[consecutiveNoiseCountRef] ${consecutiveNoiseCountRef.current}, Time since first: ${timeSinceFirst}ms`);
-    
-            if (
-                consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT &&
-                timeSinceFirst <= NOISE_TIME_WINDOW_MS
-            ) {
-                if (!showWarning || currentWarningType !== 'high_noise') {
-                    console.warn(`[Alert Triggered] ${consecutiveNoiseCountRef.current} violations in ${timeSinceFirst}ms`);
-                    setShowWarning(true);
-                    setCurrentWarningType('high_noise');
-                    setWarningStartTime(now);
+                // --- Case 2: This is a SUBSEQUENT violation ---
+                const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
+                console.log(`   Continuing sequence. Time since first: ${timeSinceFirst}ms (Window: ${NOISE_TIME_WINDOW_MS}ms)`);
+
+                // --- *** NEW CHECK: Has the time window expired? *** ---
+                if (timeSinceFirst > NOISE_TIME_WINDOW_MS) {
+                    // The sequence timed out before reaching the required count.
+                    // Reset and start a NEW sequence with THIS violation.
+                    console.log("   Time window expired before reaching count. Resetting and starting new sequence.");
+                    firstNoiseViolationInSequenceTimestampRef.current = now;
+                    lastNoiseViolationTimestampRef.current = now;
+                    consecutiveNoiseCountRef.current = 1;
+                    console.log(`   [consecutiveNoiseCountRef] reset to 1. New first timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
+                } else {
+                    // --- Time window is still valid, proceed with incrementing ---
+                    consecutiveNoiseCountRef.current += 1;
+                    lastNoiseViolationTimestampRef.current = now; // Update the last violation time
+                    console.log(`   [consecutiveNoiseCountRef] incremented to ${consecutiveNoiseCountRef.current}. Last timestamp: ${lastNoiseViolationTimestampRef.current}`);
+
+                    // --- Check if the threshold is met WITHIN the time window ---
+                    if (consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT) {
+                        // We have reached the required count within the allowed time window.
+                        console.warn(`   [Alert Triggered] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
+
+                        // Show warning only if not already showing this specific warning
+                        if (!showWarning || currentWarningType !== 'high_noise') {
+                            setShowWarning(true);
+                            setCurrentWarningType('high_noise');
+                            setWarningStartTime(now); // Timestamp when the threshold was met
+                        }
+
+                        // --- Reset everything AFTER triggering the alert ---
+                        console.log("   Resetting count after alert.");
+                        consecutiveNoiseCountRef.current = 0;
+                        firstNoiseViolationInSequenceTimestampRef.current = null;
+                        lastNoiseViolationTimestampRef.current = null;
+                    }
+                    // else: Threshold not met yet, but window is still valid. Keep monitoring.
                 }
-    
-                // Reset after alert
-                consecutiveNoiseCountRef.current = 0;
-                firstNoiseViolationInSequenceTimestampRef.current = null;
-                lastNoiseViolationTimestampRef.current = null;
             }
-        } 
+        } else {
+            // Optional: Log when noise level drops below threshold for debugging
+            // console.log(`[Noise Effect] Noise level normal at ${now}`);
+
+            // --- Decide if a drop in noise should reset the counter ---
+            // Current logic doesn't reset on noise drop, only on timeout or successful alert.
+            // This means a brief quiet period won't break the sequence unless the *next*
+            // high noise event falls outside the NOISE_TIME_WINDOW_MS from the *first* event.
+            // If you wanted *strictly* consecutive frames without interruption, you'd add:
+            // consecutiveNoiseCountRef.current = 0;
+            // firstNoiseViolationInSequenceTimestampRef.current = null;
+            // lastNoiseViolationTimestampRef.current = null;
+        }
+
     }, [
         isNoiseLevelHigh,
         isAudioMonitoringActive,
