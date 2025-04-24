@@ -12,6 +12,8 @@ const Form = () => {
     const [userId, setUserId] = useState(null); // To store the user's ID after submission
     const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
     const [isLoading, setIsLoading] = useState(false);
+    const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
+    const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
 
     // --- State for Form Flow & Errors ---
     const [submitted, setSubmitted] = useState(false); // True ONLY when test phase begins
@@ -274,6 +276,23 @@ const Form = () => {
     // Dependency: 'submitted'. Cleanup runs when submitted changes or on unmount.
     // Include isCameraOn and stopCamera so cleanup uses latest versions.
     }, [submitted, isCameraOn, stopCamera]);
+
+
+     // --- Effect: Show Email Reminder Dialog on Test Start ---
+     useEffect(() => {
+        // Check if the test area is active AND the dialog hasn't been shown yet for this session
+        if (submitted && mediaStream && !emailReminderShownRef.current) {
+            setShowEmailReminderDialog(true); // Show the dialog
+            emailReminderShownRef.current = true; // Mark that it has been shown
+        }
+
+        // Optional: Reset the ref if the test area becomes inactive
+        if (!submitted || !mediaStream) {
+            emailReminderShownRef.current = false;
+        }
+
+    }, [submitted, mediaStream]); // Depend on submitted and mediaStream
+    // --- END Effect ---
 
 
     // --- Effect 3: Stream Assignment and Video Readiness ---
@@ -1266,6 +1285,22 @@ const Form = () => {
                             </div>
                         </div>
                     </div>
+
+                    {/* --- NEW: Email Reminder Message --- */}
+                    <div className="email-reminder-message overlay top-left">
+                        <p>
+                            <strong>Important:</strong> Please use the email address{' '}
+                            <strong>({email})</strong> you entered during registration
+                            when filling out the test form below.
+                            {/* --- ADDED LINE --- */}
+                            <br /> {/* Add a line break for clarity */}
+                            <br /> {/* Add a line break for clarity */}
+                            If it does not match, you will not be included in merit.
+                            {/* --- END ADDED LINE --- */}
+                        </p>
+                    </div>
+                    {/* --- END NEW: Email Reminder Message --- */}
+
                          <div className="audio-visualization-container">
                                 <canvas
                                     ref={audioCanvasRef}
@@ -1276,7 +1311,7 @@ const Form = () => {
                             </div>
                             {/* --- END ADDED --- */}
                         <iframe
-                            src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
+                            src="https://forms.gle/CRkBenKdg2v8BsjMA"
                             className="google-form-iframe"
                             title="Google Form Test"
                             frameBorder="0" marginHeight="0" marginWidth="0"
