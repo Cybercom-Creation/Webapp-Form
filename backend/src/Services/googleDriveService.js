@@ -158,7 +158,91 @@ const uploadScreenshotToDrive = async (userName, base64Data, fileName) => {
         throw new Error(`Failed to upload screenshot to Google Drive: ${error.message}`);
     }
 };
+const uploadProfilePhotoToDrive = async (userName, base64Data, fileName) => {
+    // Input validation
+    if (!userName || !base64Data || !fileName) {
+        throw new Error('User name, base64 data, and file name are required for upload.');
+    }
+    if (!base64Data.startsWith('data:image/jpeg;base64,')) {
+        console.warn('[Drive Service] Profile photo base64 data does not start with "data:image/jpeg;base64,". Attempting upload anyway.');
+        // You might want stricter validation here depending on your frontend guarantees
+    }
+
+    try {
+        const drive = await authenticate();
+
+        // 1. Find/Create Main Folder (reuse existing logic)
+        console.log(`[Drive Service - Profile Photo] Step 1: Finding/Creating main folder '${MAIN_FOLDER_NAME}'...`);
+        const mainFolderId = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, 'root', false);
+        console.log(`[Drive Service - Profile Photo] Main folder ID: ${mainFolderId}`);
+
+        // 2. Find/Create User Folder (reuse existing logic, ensure sharing)
+        console.log(`[Drive Service - Profile Photo] Step 2: Finding/Creating user folder '${userName}' inside '${mainFolderId}'...`);
+        const userFolderId = await findOrCreateFolder(drive, userName, mainFolderId, true); // Share with TARGET_USER_EMAIL
+        console.log(`[Drive Service - Profile Photo] User folder ID: ${userFolderId}`);
+
+        // 3. Prepare file metadata and media content
+        const fileMetadata = {
+            name: fileName,
+            parents: [userFolderId],
+        };
+
+        // Decode Base64 - remove the prefix
+        const base64Image = base64Data.split(';base64,').pop();
+        if (!base64Image) { throw new Error('Invalid base64 data format.'); }
+
+        const buffer = Buffer.from(base64Image, 'base64');
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(buffer);
+
+        // *** The Key Change: Set the correct MIME type for JPEG ***
+        const media = { mimeType: 'image/jpeg', body: bufferStream };
+
+        // 4. Upload the file
+        console.log(`[Drive Service - Profile Photo] Step 3: Uploading '${fileName}' to user folder ID: ${userFolderId}...`);
+        const uploadedFile = await drive.files.create({
+            resource: fileMetadata,
+            media: media,
+            fields: 'id, name, webViewLink', // Get the link too!
+        });
+
+        const uploadedFileId = uploadedFile.data.id;
+        const uploadedFileLink = uploadedFile.data.webViewLink; // Capture the link
+        console.log(`[Drive Service - Profile Photo] File '${uploadedFile.data.name}' uploaded successfully. ID: ${uploadedFileId}, Link: ${uploadedFileLink}`);
+
+        // *** Step 5: Add Public Read Permission to the File ***
+        try {
+            console.log(`[Drive Service - Profile Photo] Setting public read permission for file ID: ${uploadedFileId}`);
+            await drive.permissions.create({
+                fileId: uploadedFileId,
+                requestBody: {
+                    role: 'reader', // Allows viewing
+                    type: 'anyone', // Specifies that anyone (no sign-in required) can access
+                },
+            });
+            console.log(`[Drive Service - Profile Photo] Public read permission set successfully for file ID: ${uploadedFileId}`);
+        } catch (permError) {
+            // Log the error but don't necessarily fail the whole process
+            console.error(`[Drive Service - Profile Photo] Warning: Failed to set public read permission for file ID ${uploadedFileId}. The link might require users to request access. Error:`, permError.response ? permError.response.data : permError.message);
+            // You could choose to throw the error here if public access is absolutely critical
+            // throw new Error(`Failed to set public permissions on uploaded file: ${permError.message}`);
+        }
+        // *** End Permission Setting ***
+
+        // Optional: Add specific permissions to the file itself if needed
+        // await addEditorPermission(drive, uploadedFileId, TARGET_USER_EMAIL);
+
+        // Return both ID and Link, as the link is often more useful for direct access
+        return { id: uploadedFileId, link: uploadedFileLink };
+
+    } catch (error) {
+        console.error(`[Drive Service - Profile Photo] Error uploading profile photo '${fileName}' for user '${userName}':`, error);
+        // Consider more specific error handling or re-throwing
+        throw new Error(`Failed to upload profile photo to Google Drive: ${error.message}`);
+    }
+};
 
 module.exports = {
     uploadScreenshotToDrive,
+    uploadProfilePhotoToDrive,
 };
