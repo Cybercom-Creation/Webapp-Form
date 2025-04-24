@@ -15,6 +15,9 @@ const Form = () => {
     const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
     const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
 
+    const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
+    const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
+
     // --- State for Form Flow & Errors ---
     const [submitted, setSubmitted] = useState(false); // True ONLY when test phase begins
     const [error, setError] = useState('');
@@ -585,6 +588,21 @@ const Form = () => {
     // --- Face Detection Logging/Warning Trigger (Unchanged Logic, but depends on state) ---
     // ... (No changes needed here)
     useEffect(() => {
+
+        // --- ADD LOGGING HERE ---
+        console.log('[Face Check Effect]', {
+            submitted,
+            userId: !!userId, // Log boolean for brevity
+            mediaStream: !!mediaStream,
+            isCameraOn,
+            isVideoReady,
+            isTimeOver,
+            isFaceDetectionGracePeriod,
+            numberOfFacesDetected,
+            noFaceStartTime: noFaceStartTime !== null, // Log boolean
+            multipleFaceStartTime: multipleFaceStartTime !== null // Log boolean
+        });
+
         // Only run this logic during the active test phase (AFTER submission and screen share start)
         if (submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod) { // Check for mediaStream too
             const currentTime = Date.now();
@@ -1403,33 +1421,56 @@ const Form = () => {
                             'violate the test rules'}
                             {' '}again.
                         </p>
+
+                        {/* --- MODIFIED: Always Render Close Blocked Message Paragraph --- */}
+                        <p className={`close-blocked-info ${closeBlockedMessage ? 'visible' : ''}`}>
+                            {/* Display message or a non-breaking space to maintain height */}
+                            {closeBlockedMessage || '\u00A0'}
+                        </p>
+                        {/* --- END MODIFICATION --- */}
+
                         <button
                             className="close-button"
                             onClick={() => {
                                  let allowClose = true; // Assume close is allowed by default
+                                 let blockReason = ''; // To store why it's blocked
 
                                  // Check if it's a face violation and if it's still active
                                  if (currentWarningType === 'no_face') {
                                      if (numberOfFacesDetected === 0) { // No face violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure your face is visible to close this warning.';
                                          console.log("Close button clicked, but 'no_face' violation persists. Preventing close.");
                                          // Optionally, add brief visual feedback like shaking the popup slightly? (More complex UI task)
                                      }
                                  } else if (currentWarningType === 'multiple_face') {
                                      if (numberOfFacesDetected > 1) { // Multiple faces violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure only one face is visible to close this warning.';
+
                                          console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
                                      }
                                  }
                                  else if (currentWarningType === 'high_noise') {
                                      if (isNoiseLevelHigh) { // High noise violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure a quiet environment to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
                                  }
  
                                  // Only proceed if the close is allowed
                                  if (allowClose) {
+
+
+                                    // --- Clear any blocked message if closing is allowed ---
+                                 if (closeBlockedTimeoutRef.current) {
+                                    clearTimeout(closeBlockedTimeoutRef.current);
+                                    closeBlockedTimeoutRef.current = null;
+                                }
+                                setCloseBlockedMessage('');
+                                // --- END Clear ---
+
                                      console.log(`Close allowed for warning type: ${currentWarningType}. Proceeding with close and logging.`);
                                      const endTime = Date.now();
                                      const startTime = warningStartTime;
@@ -1487,7 +1528,22 @@ const Form = () => {
                                          setShowScreenShareRequiredError(true);
                                          setIsScreenSharingStopped(false);
                                      }
-                                 }
+                                 } 
+                                 else {
+                                    // --- Show the blocked message ---
+                                    setCloseBlockedMessage(blockReason);
+                                    // Clear previous timeout if user clicks again quickly
+                                    if (closeBlockedTimeoutRef.current) {
+                                        clearTimeout(closeBlockedTimeoutRef.current);
+                                    }
+                                    // Set a new timeout to clear the message
+                                    closeBlockedTimeoutRef.current = setTimeout(() => {
+                                        setCloseBlockedMessage('');
+                                        closeBlockedTimeoutRef.current = null;
+                                    }, 4000); // Show message for 4 seconds
+                                    // --- END Show blocked message ---
+                                }
+
                             }}
                         >
                             Close

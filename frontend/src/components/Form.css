@@ -573,6 +573,31 @@ body {
 }
 
 /* Close button styling */
+.close-blocked-info {
+  color: #dc3545;
+  font-size: 0.85em;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: -10px; /* Adjust as needed */
+  padding: 5px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  /* --- Add/Modify these for smooth transition and reserved space --- */
+  min-height: 1.2em; /* Reserve space (adjust based on font size/line height) */
+  line-height: 1.2;  /* Match line height */
+  opacity: 0;        /* Hidden by default */
+  transition: opacity 0.3s ease-in-out; /* Animate opacity */
+  
+  /* Remove animation: fadeIn if you were using it here */
+}
+
+.close-blocked-info.visible {
+    opacity: 1; /* Make visible */
+}
+
+/* Close button styling */
 .close-button {
     background-color: #007bff;
     color: white;
@@ -584,13 +609,16 @@ body {
     transition: background-color 0.3s ease;
     display: block; /* Make the button a block element */
     margin: 20px auto; /* Center the button horizontally */
-    text-align: center; /* Ensure text is centered */
+    text-align: center; /* Ensure text inside button is centered */
 }
+
 
 .close-button:hover {
     background-color: #0056b3;
 }
 
+
+  
 /* Instructions Popup Styling */
 .instructions-list {
     margin-top: 10px;
