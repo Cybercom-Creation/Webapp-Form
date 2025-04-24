@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // --- Configuration ---
-const NOISE_THRESHOLD_DB = -5; // Example threshold in dBFS (-40 is moderate background noise)
+const NOISE_THRESHOLD_DB = -10; // Example threshold in dBFS (-40 is moderate background noise)
 const SMOOTHING_TIME_CONSTANT = 0.1;
 const FFT_SIZE = 1024;
 
@@ -41,7 +41,7 @@ export const useAudioDetection = (isActive) => {
 
             let sumSquares = 0;
             for (const amplitude of frequencyDataArrayRef.current) {
-                const normalizedAmplitude = amplitude / 256;
+                const normalizedAmplitude = (amplitude / 256);
                 sumSquares += normalizedAmplitude * normalizedAmplitude;
             }
             const rms = Math.sqrt(sumSquares / frequencyDataArrayRef.current.length);
@@ -58,7 +58,7 @@ export const useAudioDetection = (isActive) => {
 
             // --- DEBUG LOG ---
             // Log frequently to see if analysis is running and the detected level
-            console.log(`[useAudioDetection] Analysing... dBFS: ${dbfs.toFixed(2)} (Threshold: ${NOISE_THRESHOLD_DB})`);
+            // console.log(`[useAudioDetection] Analysing... dBFS: ${dbfs.toFixed(2)} (Threshold: ${NOISE_THRESHOLD_DB})`);
             // --- END DEBUG LOG ---
 
             setCurrentDecibels(dbfs);

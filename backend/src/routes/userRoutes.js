@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User'); // Import the User model
 
+// *** Import the Google Drive upload function ***
+const { uploadProfilePhotoToDrive } = require('../Services/googleDriveService'); // Adjust path if needed
+
+
 // --- POST /api/users ---
 // Create a new user
 router.post('/', async (req, res) => {
@@ -13,13 +17,65 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
+        // Optional: More specific validation for photoBase64 if provided
+        if (photoBase64 && typeof photoBase64 !== 'string') {
+            return res.status(400).json({ message: 'Invalid photo data format.' });
+       }
+       if (photoBase64 && !photoBase64.startsWith('data:image/jpeg;base64,')) {
+            console.warn('[Routes] Received photoBase64 does not start with "data:image/jpeg;base64,"');
+            // Decide if this is an error or just a warning
+            // return res.status(400).json({ message: 'Photo data must be a Base64 encoded JPEG.' });
+       }
+
         // Mongoose handles unique checks via schema index, but explicit check is fine too
         let existingUser = await User.findOne({ $or: [{ email }, { phone }] });
         if (existingUser) {
-            return res.status(409).json({ message: 'Email or phone number already exists.' });
+            // Determine which field caused the conflict for a better message
+            let conflictField = existingUser.email === email ? 'Email' : 'Phone number';
+            return res.status(409).json({ message: `${conflictField} already exists.` });
         }
 
-        const newUser = new User({ name, email, phone, photoBase64 });
+
+        // --- Upload Photo to Google Drive ---
+        let photoDriveLink = null; // Initialize link as null
+        if (photoBase64) { // Only attempt upload if photo data exists
+            try {
+                // Generate a filename (use user's name or email for folder, specific name for file)
+                const safeUserNameForFolder = name.replace(/[^a-zA-Z0-9\s_-]/g, '_'); // Basic sanitization
+                const fileName = `profile_${Date.now()}.jpg`; // Unique filename
+
+                console.log(`[Routes] Attempting to upload photo for user ${email} (folder: ${safeUserNameForFolder}) as ${fileName}`);
+
+                // *** Call the service function ***
+                const driveFileData = await uploadProfilePhotoToDrive(safeUserNameForFolder, photoBase64, fileName);
+
+                if (driveFileData && driveFileData.link) {
+                    photoDriveLink = driveFileData.link; // Store the link if upload succeeded
+                    console.log(`[Routes] Successfully uploaded photo to Drive. Link: ${photoDriveLink}`);
+                } else {
+                    console.warn(`[Routes] Failed to upload profile photo to Drive for user ${email}. Proceeding without Drive link.`);
+                }
+            } catch (uploadError) {
+                console.error("[Routes] Error during profile photo upload:", uploadError.message || uploadError);
+                // Log the error and proceed without the link (photoDriveLink remains null)
+                // Optionally, you could return an error to the user here if the upload is critical
+                // return res.status(500).json({ message: 'Failed to upload profile photo.' });
+            }
+        } else {
+            console.log(`[Routes] No photo data provided for user ${email}. Skipping Drive upload.`);
+        }
+
+         // --- Create New User Document ---
+        const newUser = new User({
+            name,
+            email,
+            phone,
+            photoBase64: photoBase64 || null, // Save original base64 or null
+            photoDriveLink: photoDriveLink    // Save the drive link (or null if failed/not provided)
+            // createdAt will be added automatically by Mongoose if defined in schema
+        });
+
+        // Save the new user document to MongoDB
         await newUser.save(); // Save the new user document
 
         // IMPORTANT: Send back the MongoDB _id as userId for the frontend

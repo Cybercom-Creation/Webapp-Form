@@ -18,7 +18,7 @@ const Form = () => {
     const [nameError, setNameError] = useState('');
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
-    const [cameraError, setCameraError] = useState('');
+    //const [cameraError, setCameraError] = useState('');
     const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false);
 
     // --- State for Camera ---
@@ -28,6 +28,13 @@ const Form = () => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null); // Still needed for capture during submit
     const isInitialCameraStopped = useRef(false); // Ref to track if initial camera stop was triggered
+    const [cameraError, setCameraError] = useState(''); // For operational errors (start failed, etc.)
+
+    // --- NEW: State for Initial Camera Availability Check ---
+    const [isCameraAvailable, setIsCameraAvailable] = useState(null); // null = checking, false = not found/error, true = found
+    const [cameraAvailabilityError, setCameraAvailabilityError] = useState(''); // Specific error for the initial check
+
+
 
     // --- ADDED: State for face detection event timing ---
     const [noFaceStartTime, setNoFaceStartTime] = useState(null);
@@ -37,6 +44,18 @@ const Form = () => {
     // --- ADDED: State to track the specific type of the current warning ---
     const [currentWarningType, setCurrentWarningType] = useState(null);
     // --- END ADDED ---
+
+    // --- Configuration for Consecutive Noise Alert ---
+    const REQUIRED_CONSECUTIVE_NOISE_COUNT = 4; // Trigger after 4 consecutive violations
+    const NOISE_TIME_WINDOW_MS = 10000; // Within 10 seconds
+    const CONSECUTIVE_FRAME_TIME_MS = 3000; // Max time between frames to be considered consecutive (adjust if needed)
+    // --- End Configuration ---
+
+    // --- Refs to track consecutive noise ---
+    const consecutiveNoiseCountRef = useRef(0);
+    const firstNoiseViolationInSequenceTimestampRef = useRef(null);
+    const lastNoiseViolationTimestampRef = useRef(null); // To check for consecutiveness
+    // --- End Refs ---
 
     // --- Use the MediaPipe Face Detection Hook ---
     const {
@@ -110,6 +129,21 @@ const Form = () => {
     }, []); // No dependencies needed
 
     const startCamera = useCallback(async (phase = 'initial') => {
+
+        // --- ADDED: Check if camera was found available initially ---
+        if (isCameraAvailable === false) {
+            console.log(`startCamera (${phase}): Aborting. Initial check found no camera available.`);
+            // Ensure the availability error is shown if not already
+            if (!cameraAvailabilityError) {
+                setCameraAvailabilityError('Camera is required to process further.');
+            }
+            return; // Don't try to start if check failed
+        }
+        // --- END ADDED ---
+
+
+
+
         // Check if already on/starting to prevent race conditions
         // Use local check before async call
         if (isCameraOn || cameraStream) {
@@ -159,7 +193,46 @@ const Form = () => {
         }
     // Dependencies: detectorReady (condition), stopCamera (internal safety net)
     // Avoid isCameraOn/cameraStream here to break loops, rely on check inside.
-    }, [detectorReady, stopCamera]);
+    }, [detectorReady, stopCamera, isCameraAvailable, cameraAvailabilityError]);
+
+
+    // --- NEW Effect: Initial Camera Availability Check ---
+    useEffect(() => {
+        // Only run this check once when the component mounts and before submission
+        if (!submitted && isCameraAvailable === null) { // Check only if status is 'checking' (null)
+            const checkCameraAvailability = async () => {
+                console.log(">>> Effect (Camera Check): Running initial camera availability check...");
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    console.warn("Effect (Camera Check): MediaDevices API not supported.");
+                    setCameraAvailabilityError('Your browser does not support camera detection.');
+                    setIsCameraAvailable(false);
+                    return;
+                }
+
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const hasVideoInput = devices.some(device => device.kind === 'videoinput');
+
+                    if (hasVideoInput) {
+                        console.log("Effect (Camera Check): Camera detected.");
+                        setIsCameraAvailable(true);
+                        setCameraAvailabilityError(''); // Clear any error
+                    } else {
+                        console.warn("Effect (Camera Check): No camera detected.");
+                        setIsCameraAvailable(false);
+                        setCameraAvailabilityError('Camera is required to process further.');
+                    }
+                } catch (err) {
+                    console.error("Effect (Camera Check): Error enumerating devices:", err);
+                    setIsCameraAvailable(false);
+                    // Provide a slightly different error for enumeration issues vs. not found
+                    setCameraAvailabilityError('Could not check for camera. Please ensure permissions are allowed if prompted previously.');
+                }
+            };
+
+            checkCameraAvailability();
+        }
+    }, [submitted, isCameraAvailable]); // Run when submitted changes or check state changes (but logic prevents re-run after initial check)
 
 
     // --- Effect 1: Initial Camera Start ---
@@ -774,6 +847,7 @@ const Form = () => {
             // Optionally, display this error to the user
         }
     };
+    // --- END UPDATED Function ---
 
 
     // --- Screenshot Interval (Unchanged) ---
@@ -833,83 +907,57 @@ const Form = () => {
         }
     }, [hookAudioError]);
 
-     // --- Effect for Noise Detection Logging/Warning Trigger ---
-     useEffect(() => {
-
-         // --- DEBUG LOG ---
-         console.log(`[Form.js Noise Effect] Running. isNoiseLevelHigh=${isNoiseLevelHigh}, isAudioMonitoring=${isAudioMonitoring}`);
-         // --- END DEBUG LOG ---
-         
-        // Only run this logic during the active test phase when audio is monitoring
-        if (submitted && userId && mediaStream && isAudioMonitoring && !isTimeOver) {
-            const currentTime = Date.now();
-
-            // --- Handle HIGH NOISE Detected ---
-            if (isNoiseLevelHigh) {
-                // Check if this is the start of the high noise event
-                if (noiseStartTime === null) {
-                    console.log("VIOLATION TRIGGER: High Noise Detected");
-                    setNoiseStartTime(currentTime);
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('high_noise');
-                    // setShowWarning(true);
-                }
-                else {
-                    // If noise is still high but start time is already set, do nothing (warning is already shown or was closed manually)
-                    console.log(`   [Noise Effect] Condition NOT MET for trigger: isNoiseLevelHigh=true, but noiseStartTime is NOT null (${noiseStartTime}). Doing nothing.`);
-               }
-            }
-            // --- Handle Noise Level NORMAL ---
-            else {
-                // Check if a high noise event was previously active
-                if (noiseStartTime !== null) {
-                    console.log("LOG EVENT DURATION END: High Noise");
-                    sendProctoringLog({
-                        userId: userId,
-                        triggerEvent: 'high_noise', // Use a specific event type
-                        startTime: noiseStartTime,
-                        endTime: currentTime
-                    });
-                    // Reset the start time and hide the persistent warning
-                    setNoiseStartTime(null);
-                    // setShowNoiseWarning(false);
-                    // If we were showing the temporary warning for noise, clear it too
-                    // if (showWarning && currentWarningType === 'high_noise') {
-                    //     setShowWarning(false);
-                    //     setWarningStartTime(null);
-                    //     setCurrentWarningType(null);
-                    // }
-                }
-                else {
-                    console.log("   [Noise Effect] Condition NOT MET for reset: isNoiseLevelHigh=false, and noiseStartTime is already null. Doing nothing.");
-               }
-            }
-        } else {
-            // Reset noise state if test becomes inactive or prerequisites aren't met
-            if (noiseStartTime !== null) {
-                // If the test ends while noise is high, log the end time
-                console.log("LOG EVENT DURATION END (Test Inactive): High Noise");
-                 sendProctoringLog({
-                     userId: userId, // userId might still be available
-                     triggerEvent: 'high_noise',
-                     startTime: noiseStartTime,
-                     endTime: Date.now() // Log with current time
-                 });
-                setNoiseStartTime(null);
-            }
-        //     if (showWarning && currentWarningType === 'high_noise') {
-        //         console.log("   [Noise Effect] Test inactive, hiding any active noise warning.");
-        //         setShowWarning(false);
-        //         setWarningStartTime(null);
-        //         setCurrentWarningType(null);
-        //    }
-            // setShowNoiseWarning(false); // Ensure warning is hidden when inactive
+    useEffect(() => {
+        if (!isAudioMonitoringActive) {
+            consecutiveNoiseCountRef.current = 0;
+            firstNoiseViolationInSequenceTimestampRef.current = null;
+            lastNoiseViolationTimestampRef.current = null;
+            return;
         }
+    
+        const now = Date.now();
+    
+        if (isNoiseLevelHigh) {
+            console.log(`[isNoiseLevelHigh] ${isNoiseLevelHigh}`);
+    
+            if (firstNoiseViolationInSequenceTimestampRef.current === null) {
+                // First violation
+                firstNoiseViolationInSequenceTimestampRef.current = now;
+                consecutiveNoiseCountRef.current = 1;
+            } else {
+                // Add to ongoing sequence
+                consecutiveNoiseCountRef.current += 1;
+            }
+    
+            lastNoiseViolationTimestampRef.current = now;
+    
+            const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
+            console.log(`[consecutiveNoiseCountRef] ${consecutiveNoiseCountRef.current}, Time since first: ${timeSinceFirst}ms`);
+    
+            if (
+                consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT &&
+                timeSinceFirst <= NOISE_TIME_WINDOW_MS
+            ) {
+                if (!showWarning || currentWarningType !== 'high_noise') {
+                    console.warn(`[Alert Triggered] ${consecutiveNoiseCountRef.current} violations in ${timeSinceFirst}ms`);
+                    setShowWarning(true);
+                    setCurrentWarningType('high_noise');
+                    setWarningStartTime(now);
+                }
+    
+                // Reset after alert
+                consecutiveNoiseCountRef.current = 0;
+                firstNoiseViolationInSequenceTimestampRef.current = null;
+                lastNoiseViolationTimestampRef.current = null;
+            }
+        } 
     }, [
-        isNoiseLevelHigh, submitted, userId, mediaStream, isAudioMonitoring, isTimeOver, // Key dependencies
-        noiseStartTime, sendProctoringLog, // State and functions used
-        showWarning, currentWarningType, setWarningStartTime, setCurrentWarningType
+        isNoiseLevelHigh,
+        isAudioMonitoringActive,
+        showWarning,
+        currentWarningType,
     ]);
+        
 
     // --- UPDATED: Effect for Drawing Audio Waveform Visualization ---
     useEffect(() => {
@@ -988,6 +1036,7 @@ const Form = () => {
 
     // ... (No changes needed here)
     const isSubmitDisabled =
+        isCameraAvailable === null || // Still checking for camera
         !name || !!nameError ||
         !email || !!emailError ||
         !phone || !!phoneError ||
@@ -1013,7 +1062,11 @@ const Form = () => {
                             onBlur={() => checkFieldExists('name', name, setNameError)}
                             required aria-invalid={!!nameError} aria-describedby="name-error"
                         />
-                        {nameError && <p id="name-error" className={`error-message ${nameError ? 'visible' : ''}`}>{nameError}</p>}
+                       {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                        <p id="name-error" className={`error-message ${nameError ? 'visible' : ''}`}>
+                        {/* Display the error message text, or a non-breaking space to maintain height */}
+                        {nameError || '\u00A0'}
+                         </p>
                     </div>
                     <div className="form-group">
                         <label htmlFor="email">Email:</label>
@@ -1023,7 +1076,10 @@ const Form = () => {
                             onBlur={() => checkFieldExists('email', email, setEmailError)}
                             required aria-invalid={!!emailError} aria-describedby="email-error"
                         />
-                        {emailError && <p id="email-error" className={`error-message ${emailError ? 'visible' : ''}`}>{emailError}</p>}
+                      {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                    <p id="email-error" className={`error-message ${emailError ? 'visible' : ''}`}>
+                    {emailError || '\u00A0'}
+                    </p>
                     </div>
                     <div className="form-group">
                         <label htmlFor="phone">Phone Number:</label>
@@ -1033,20 +1089,27 @@ const Form = () => {
                             onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
                             required aria-invalid={!!phoneError} aria-describedby="phone-error"
                         />
-                        {phoneError && <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>{phoneError}</p>}
+                        {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
+                        <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>
+                        {phoneError || '\u00A0'}
+                        </p>
                     </div>
 
 
                     {/* --- Camera Section (Simplified) --- */}
                     <div className="form-group camera-section">
+
+                    {/* --- NEW: Display Initial Camera Availability Error --- */}
+                    {cameraAvailabilityError && <p className="error-message visible">{cameraAvailabilityError}</p>}
+
                         
-
-                        {/* Camera Error Display */}
-                        {cameraError && <p className="error-message visible">{cameraError}</p>}
-
+                    {/* Apply same logic if cameraError causes shifts */}
+                    <p className={`error-message ${cameraError ? 'visible' : ''}`}>
+                    {cameraError || '\u00A0'}
+                    </p>
                         {/* Detection Status & Warnings */}
                         
-                        {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
+                        {/* {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
                             <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
                                 Warning: Multiple faces detected.
                             </p>
@@ -1055,7 +1118,33 @@ const Form = () => {
                             <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
                                 Warning: No face detected.
                             </p>
-                        )}
+                        )} */}
+
+                    {/* --- MODIFIED: Face Detection Warnings --- */}
+    {/* Warning for NO face detected */}
+    <p
+        className={`error-message ${
+            isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''
+        }`}
+        // Apply style only when visible to avoid applying orange color to the non-breaking space
+        style={
+            isCameraOn && isVideoReady && numberOfFacesDetected !== 1
+                ? { color: 'orange', fontWeight: 'bold' }
+                : {} // Empty style object when not visible
+        }
+    >
+        {/* Determine the message content */}
+        {isCameraOn && isVideoReady
+            ? numberOfFacesDetected === 0
+                ? 'Warning: No face detected.' // Message for 0 faces
+                : numberOfFacesDetected > 1
+                ? 'Warning: Multiple faces detected.' // Message for >1 faces
+                : '\u00A0' // Non-breaking space when 1 face (normal)
+            : '\u00A0' // Non-breaking space if camera isn't ready
+        }
+    </p>
+    {/* --- END MODIFICATION --- */}                    
+
 
                         {/* Live feed container */}
                         <div className="camera-live-container">
@@ -1068,15 +1157,20 @@ const Form = () => {
                                 style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
                             ></video>
                             {/* Placeholder when camera is off */}
-                            {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
+                            {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
+                            {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
+                            {isCameraAvailable === true && !isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>} */}
                             {/* Hidden canvas for capture */}
                             <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
                         </div>
                     </div>
                     {/* --- End Camera Section --- */}
 
-                    {/* General Form Error */}
-                    {error && <p className="error-message visible">{error}</p>}
+                    {/* // --- General Form Error (if you want the same behavior) --- */}
+                    {/* Apply same logic if general error causes shifts */}
+                    <p className={`error-message ${error ? 'visible' : ''}`}>
+                    {error || '\u00A0'}
+                    </p>
 
                     {/* Submit Button */}
                     <button
@@ -1085,14 +1179,18 @@ const Form = () => {
                         disabled={isSubmitDisabled} // Use the calculated disabled state
                     >
                         {isSubmitDisabled
-                            ? !detectorReady
+                        ? isCameraAvailable === null
+                        ? 'Checking Camera...' // NEW
+                        : !isCameraAvailable
+                        ? 'Camera Required' // NEW
+                        : !detectorReady
                                 ? 'Loading Detector...'
                                 : !isCameraOn
                                 ? 'Starting Camera...'
                                 : !isVideoReady
                                 ? 'Initializing Camera...'
                                 : (!name || !!nameError || !email || !!emailError || !phone || !!phoneError)
-                                ? 'Capture & Submit'
+                                ?  'Fill Details Correctly' // Changed for clarity
                                 : numberOfFacesDetected !== 1
                                 ? 'Align Face (1 needed)'
                                 : 'Check Conditions' // Fallback disabled text
