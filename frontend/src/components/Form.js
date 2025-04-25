@@ -768,6 +768,27 @@ const Form = () => {
             stopCamera();
             isInitialCameraStopped.current = true; // Mark that we handled the stop
 
+            // --- ADDED CHECK: Verify if a browser tab was shared ---
+            const videoTrack = stream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+            console.log('Screen share track settings:', settings); // For debugging
+
+            if (!settings || settings.displaySurface !== 'window') {
+                console.warn(`Incorrect surface shared: ${settings?.displaySurface}. Expected 'browser'. Showing warning.`);
+                // Stop the incorrectly shared stream
+                stream.getTracks().forEach(track => track.stop());
+
+                // --- Use EXISTING warning mechanism ---
+                setCurrentWarningType('incorrect_screen_share'); // Set a specific type for the message
+                setWarningStartTime(Date.now());
+                setShowWarning(true);
+                // --- End Use EXISTING warning mechanism ---
+
+                // Prevent further execution (do not start the test)
+                return;
+            }
+            // --- END ADDED CHECK ---
+
             // Use setTimeout to allow hardware/browser to release the camera before restarting
             setTimeout(() => {
                 const startTestCamera = async () => {
@@ -801,15 +822,11 @@ const Form = () => {
             setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE TO START TEST PHASE
             setIsFaceDetectionGracePeriod(true);
 
-            const videoTrack = stream.getVideoTracks()[0];
+            // const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {
-                // Check if still submitted before triggering violation
-                if (submitted) {
-                    setIsScreenSharingStopped(true); // Set flag first
-                    handleStopSharingViolation();
-                } else {
-                    console.log("Screen sharing ended, but test not submitted. Ignoring.");
-                }
+                console.log("Screen sharing ended");
+                setIsScreenSharingStopped(true); // Set flag first
+                handleStopSharingViolation();
             };
         } catch (error) {
             console.error('Error requesting screen capture:', error);
@@ -1560,6 +1577,10 @@ const Form = () => {
                                                  triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
                                                  break;
+                                             case 'incorrect_screen_share':
+                                                 triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed
+                                                 shouldLogPopupClose = true;
+                                                 break;
                                              default:
                                                  triggerEventToLog = 'unknown_warning';
                                                  shouldLogPopupClose = true;
@@ -1581,6 +1602,10 @@ const Form = () => {
                                      setShowWarning(false);
                                      setWarningStartTime(null);
                                      setCurrentWarningType(null);
+
+                                    if (currentWarningType === 'incorrect_screen_share') {
+                                        setShowInstructions(true); // Allow user to try again from instructions
+                                    }
  
                                      if (isScreenSharingStopped) {
                                          setShowScreenShareRequiredError(true);
