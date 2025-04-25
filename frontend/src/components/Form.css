@@ -301,6 +301,25 @@ body {
     transform: none;         /* Prevent scaling on click */
   }
 
+  /* Basic Spinner CSS */
+.spinner {
+    display: inline-block; /* Align with text */
+    width: 1em;            /* Size relative to font size */
+    height: 1em;
+    margin-right: 8px;     /* Space between spinner and text */
+    border: 2px solid rgba(255, 255, 255, 0.3); /* Light border */
+    border-radius: 50%;
+    border-top-color: #fff; /* White top border for spinning effect */
+    animation: spin 1s ease-in-out infinite; /* Animation */
+    vertical-align: middle; /* Align vertically with text */
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }  
+
 /* Blocked message styling */
 .blocked-message {
     text-align: center;
@@ -381,6 +400,122 @@ body {
     }
 }
 
+/* General Overlay Styles */
+.overlay {
+    position: absolute; /* Position relative to google-form-page */
+    z-index: 10;      /* Ensure overlays are above the iframe container */
+    background-color: rgba(255, 255, 255, 0.8); /* Semi-transparent white background */
+    backdrop-filter: blur(4px); /* Optional: Add a blur effect */
+    -webkit-backdrop-filter: blur(4px); /* Safari support */
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    padding: 10px; /* Default padding */
+    margin: 15px;  /* Default margin for spacing from screen edges */
+  }
+  
+  /* Specific Overlay Positioning */
+  .overlay.top-left {
+    top: 0;
+    left: 0;
+  }
+  
+  /* Apply overlay styles to user details */
+  .user-details-display.enhanced.overlay {
+    /* Inherits .overlay styles */
+    background-color: rgba(233, 245, 254, 0.85); /* Slightly transparent version of blue */
+    border: 1px solid #bde0fe;
+    padding: 15px 20px; /* Keep original padding */
+    width: 300px; /* Keep fixed width */
+    height: fit-content;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+    transition: box-shadow 0.3s ease;
+  }
+  .user-details-display.enhanced.overlay:hover {
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* --- Internal Styles for Enhanced User Details (Keep these) --- */
+  .user-details-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #a2d2ff;
+  }
+  .user-details-header h3 {
+    margin: 0;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #0b69a3;
+  }
+  .user-details-header .user-icon { /* Optional icon style */
+    font-size: 1.5em;
+    margin-right: 10px;
+    color: #0b69a3;
+  }
+  .user-details-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .detail-item {
+    display: flex;
+    align-items: center;
+    font-size: 0.95em;
+  }
+  .detail-item .detail-icon { /* Optional icon style */
+    margin-right: 8px;
+    color: #555;
+    width: 16px;
+    text-align: center;
+  }
+  .detail-label {
+    font-weight: 600;
+    color: #444;
+    margin-right: 8px;
+    min-width: 50px;
+    display: inline-block;
+  }
+  .detail-value {
+    color: #111;
+    word-break: break-all;
+  }
+
+
+  /* --- Add these styles to Form.css --- */
+
+.email-reminder-message {
+    /* Inherit general overlay styles if needed, or define specific ones */
+    position: absolute; /* Position relative to google-form-page */
+    z-index: 9;         /* Slightly lower than user details if overlapping needed, or adjust positioning */
+    top: 0;             /* Align with top initially */
+    left: 0;            /* Align with left */
+    margin: 15px;       /* Match the margin of the user details box */
+    margin-top: 200px;  /* << ADJUST THIS VALUE */ /* Push it down below the user details box. You'll need to fine-tune this based on the height of your user details box */
+    width: 300px;       /* Match the width of the user details box */
+    padding: 10px 15px;
+    background-color: rgba(255, 243, 205, 0.9); /* Light warning yellow, semi-transparent */
+    border: 1px solid #ffeeba;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    font-size: 0.85em;
+    color: #856404; /* Dark yellow text */
+    line-height: 1.4;
+}
+
+.email-reminder-message p {
+    margin: 0;
+}
+
+.email-reminder-message strong {
+    color: #664d03; /* Slightly darker for emphasis */
+}
+
+/* --- End Added Styles --- */
+
+  
+
 /* Google form container styling */
 .google-form-container {
     position: fixed; /* Make it cover the entire screen */
@@ -398,6 +533,8 @@ body {
     border: none; /* Remove the border */
 }
 
+
+
 /* Popup overlay styling */
 .popup-overlay {
     position: fixed;
@@ -411,6 +548,8 @@ body {
     align-items: center;
     z-index: 2000;
 }
+
+
 
 /* Popup box styling */
 .popup {
@@ -434,6 +573,31 @@ body {
 }
 
 /* Close button styling */
+.close-blocked-info {
+  color: #dc3545;
+  font-size: 0.85em;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: -10px; /* Adjust as needed */
+  padding: 5px;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  /* --- Add/Modify these for smooth transition and reserved space --- */
+  min-height: 1.2em; /* Reserve space (adjust based on font size/line height) */
+  line-height: 1.2;  /* Match line height */
+  opacity: 0;        /* Hidden by default */
+  transition: opacity 0.3s ease-in-out; /* Animate opacity */
+  
+  /* Remove animation: fadeIn if you were using it here */
+}
+
+.close-blocked-info.visible {
+    opacity: 1; /* Make visible */
+}
+
+/* Close button styling */
 .close-button {
     background-color: #007bff;
     color: white;
@@ -445,13 +609,16 @@ body {
     transition: background-color 0.3s ease;
     display: block; /* Make the button a block element */
     margin: 20px auto; /* Center the button horizontally */
-    text-align: center; /* Ensure text is centered */
+    text-align: center; /* Ensure text inside button is centered */
 }
+
 
 .close-button:hover {
     background-color: #0056b3;
 }
 
+
+  
 /* Instructions Popup Styling */
 .instructions-list {
     margin-top: 10px;

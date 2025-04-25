@@ -11,6 +11,12 @@ const Form = () => {
     const [phone, setPhone] = useState('');
     const [userId, setUserId] = useState(null); // To store the user's ID after submission
     const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
+    const [isLoading, setIsLoading] = useState(false);
+    const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
+    const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
+
+    const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
+    const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
 
     // --- State for Form Flow & Errors ---
     const [submitted, setSubmitted] = useState(false); // True ONLY when test phase begins
@@ -275,6 +281,23 @@ const Form = () => {
     }, [submitted, isCameraOn, stopCamera]);
 
 
+     // --- Effect: Show Email Reminder Dialog on Test Start ---
+     useEffect(() => {
+        // Check if the test area is active AND the dialog hasn't been shown yet for this session
+        if (submitted && mediaStream && !emailReminderShownRef.current) {
+            setShowEmailReminderDialog(true); // Show the dialog
+            emailReminderShownRef.current = true; // Mark that it has been shown
+        }
+
+        // Optional: Reset the ref if the test area becomes inactive
+        if (!submitted || !mediaStream) {
+            emailReminderShownRef.current = false;
+        }
+
+    }, [submitted, mediaStream]); // Depend on submitted and mediaStream
+    // --- END Effect ---
+
+
     // --- Effect 3: Stream Assignment and Video Readiness ---
     useEffect(() => {
         const videoElement = videoRef.current;
@@ -487,6 +510,8 @@ const Form = () => {
         const capturedPhotoBase64 = captureResult.photoBase64;
         console.log("handleSubmit: Face photo captured successfully.");
 
+        setIsLoading(true);
+
         // 4. Prepare data and submit
         const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
         console.log("Submitting form with captured photo...");
@@ -518,6 +543,7 @@ const Form = () => {
                 // Set flag to prevent Effect 2 cleanup from stopping camera if requestScreenCapture stops it first.
                 isInitialCameraStopped.current = true; // Mark that we intend to stop/restart
                 console.log("handleSubmit success: Marked initial camera stop flag.");
+                setIsLoading(false); // Stop loading spinner
                 setShowInstructions(true); // Proceed to instructions
             } else {
                 console.error("Submission successful, but User ID not received!");
@@ -526,6 +552,9 @@ const Form = () => {
         } catch (err) {
             console.error("Caught submission error:", err);
             setError(err.message || 'An unexpected error occurred during submission.');
+        }
+        finally{
+
         }
     };
 
@@ -559,6 +588,21 @@ const Form = () => {
     // --- Face Detection Logging/Warning Trigger (Unchanged Logic, but depends on state) ---
     // ... (No changes needed here)
     useEffect(() => {
+
+        // --- ADD LOGGING HERE ---
+        console.log('[Face Check Effect]', {
+            submitted,
+            userId: !!userId, // Log boolean for brevity
+            mediaStream: !!mediaStream,
+            isCameraOn,
+            isVideoReady,
+            isTimeOver,
+            isFaceDetectionGracePeriod,
+            numberOfFacesDetected,
+            noFaceStartTime: noFaceStartTime !== null, // Log boolean
+            multipleFaceStartTime: multipleFaceStartTime !== null // Log boolean
+        });
+
         // Only run this logic during the active test phase (AFTER submission and screen share start)
         if (submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod) { // Check for mediaStream too
             const currentTime = Date.now();
@@ -1210,9 +1254,14 @@ const Form = () => {
                     <button
                         type="submit"
                         className="submit-button"
-                        disabled={isSubmitDisabled} // Use the calculated disabled state
+                        disabled={isLoading ||isSubmitDisabled} // Use the calculated disabled state
                     >
-                        {isSubmitDisabled
+                        {/* Show spinner ONLY when isLoading is true */}
+                        {isLoading && <div className="spinner"></div>}
+
+                        {isLoading
+                        ? 'Submitting...' 
+                        : isSubmitDisabled
                         ? isCameraAvailable === null
                         ? 'Checking Camera...' // NEW
                         : !isCameraAvailable
@@ -1233,6 +1282,10 @@ const Form = () => {
                 </form>
             ) : submitted && mediaStream ? ( // Test Area (Test Started and Screen Sharing Active)
                 <div className="google-form-page">
+                   
+                    
+                    
+                    
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
                             <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p>
@@ -1259,6 +1312,47 @@ const Form = () => {
                             {/* {isAudioMonitoring && <p>Audio Level: {currentDecibels.toFixed(1)} dBFS</p>} */}
                         </div>
                          {/* --- ADDED: Audio Visualization Canvas --- */}
+
+                         <div className="user-details-display enhanced overlay top-left"> {/* Add overlay classes */}
+                        <div className="user-details-header">
+                            {/* Optional: Icon */}
+                            {/* <FaUserCircle className="user-icon" /> */}
+                            <h3>Candidate Details</h3>
+                        </div>
+                        <div className="user-details-body">
+                            <div className="detail-item">
+                                {/* <FaUserCircle className="detail-icon" /> */}
+                                <span className="detail-label">Name:</span>
+                                <span className="detail-value">{name}</span>
+                            </div>
+                            <div className="detail-item">
+                                {/* <FaEnvelope className="detail-icon" /> */}
+                                <span className="detail-label">Email:</span>
+                                <span className="detail-value">{email}</span>
+                            </div>
+                            <div className="detail-item">
+                                {/* <FaPhone className="detail-icon" /> */}
+                                <span className="detail-label">Phone:</span>
+                                <span className="detail-value">{phone}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* --- NEW: Email Reminder Message --- */}
+                    <div className="email-reminder-message overlay top-left">
+                        <p>
+                            <strong>Important:</strong> Please use the email address{' '}
+                            <strong>({email})</strong> you entered during registration
+                            when filling out the test form below.
+                            {/* --- ADDED LINE --- */}
+                            <br /> {/* Add a line break for clarity */}
+                            <br /> {/* Add a line break for clarity */}
+                            If it does not match, you will not be included in merit.
+                            {/* --- END ADDED LINE --- */}
+                        </p>
+                    </div>
+                    {/* --- END NEW: Email Reminder Message --- */}
+
                          <div className="audio-visualization-container">
                                 <canvas
                                     ref={audioCanvasRef}
@@ -1269,7 +1363,7 @@ const Form = () => {
                             </div>
                             {/* --- END ADDED --- */}
                         <iframe
-                            src="https://docs.google.com/forms/d/e/1FAIpQLSdjoWcHb2PqK1BXPp_U8Z-AYHyaimZ4Ko5-xvmNOOuQquDOTQ/viewform?embedded=true"
+                            src="https://forms.gle/CRkBenKdg2v8BsjMA"
                             className="google-form-iframe"
                             title="Google Form Test"
                             frameBorder="0" marginHeight="0" marginWidth="0"
@@ -1361,33 +1455,56 @@ const Form = () => {
                             'violate the test rules'}
                             {' '}again.
                         </p>
+
+                        {/* --- MODIFIED: Always Render Close Blocked Message Paragraph --- */}
+                        <p className={`close-blocked-info ${closeBlockedMessage ? 'visible' : ''}`}>
+                            {/* Display message or a non-breaking space to maintain height */}
+                            {closeBlockedMessage || '\u00A0'}
+                        </p>
+                        {/* --- END MODIFICATION --- */}
+
                         <button
                             className="close-button"
                             onClick={() => {
                                  let allowClose = true; // Assume close is allowed by default
+                                 let blockReason = ''; // To store why it's blocked
 
                                  // Check if it's a face violation and if it's still active
                                  if (currentWarningType === 'no_face') {
                                      if (numberOfFacesDetected === 0) { // No face violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure your face is visible to close this warning.';
                                          console.log("Close button clicked, but 'no_face' violation persists. Preventing close.");
                                          // Optionally, add brief visual feedback like shaking the popup slightly? (More complex UI task)
                                      }
                                  } else if (currentWarningType === 'multiple_face') {
                                      if (numberOfFacesDetected > 1) { // Multiple faces violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure only one face is visible to close this warning.';
+
                                          console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
                                      }
                                  }
                                  else if (currentWarningType === 'high_noise') {
                                      if (isNoiseLevelHigh) { // High noise violation still active
                                          allowClose = false;
+                                         blockReason = 'Please ensure a quiet environment to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
                                  }
  
                                  // Only proceed if the close is allowed
                                  if (allowClose) {
+
+
+                                    // --- Clear any blocked message if closing is allowed ---
+                                 if (closeBlockedTimeoutRef.current) {
+                                    clearTimeout(closeBlockedTimeoutRef.current);
+                                    closeBlockedTimeoutRef.current = null;
+                                }
+                                setCloseBlockedMessage('');
+                                // --- END Clear ---
+
                                      console.log(`Close allowed for warning type: ${currentWarningType}. Proceeding with close and logging.`);
                                      const endTime = Date.now();
                                      const startTime = warningStartTime;
@@ -1445,7 +1562,22 @@ const Form = () => {
                                          setShowScreenShareRequiredError(true);
                                          setIsScreenSharingStopped(false);
                                      }
-                                 }
+                                 } 
+                                 else {
+                                    // --- Show the blocked message ---
+                                    setCloseBlockedMessage(blockReason);
+                                    // Clear previous timeout if user clicks again quickly
+                                    if (closeBlockedTimeoutRef.current) {
+                                        clearTimeout(closeBlockedTimeoutRef.current);
+                                    }
+                                    // Set a new timeout to clear the message
+                                    closeBlockedTimeoutRef.current = setTimeout(() => {
+                                        setCloseBlockedMessage('');
+                                        closeBlockedTimeoutRef.current = null;
+                                    }, 4000); // Show message for 4 seconds
+                                    // --- END Show blocked message ---
+                                }
+
                             }}
                         >
                             Close
