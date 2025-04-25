@@ -752,7 +752,7 @@ const Form = () => {
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
     const requestScreenCapture = async () => {
         setShowInstructions(false); // Close instructions popup first
-        isInitialCameraStopped.current = false; // Reset flag before attempting screen share
+        // isInitialCameraStopped.current = false; // Reset flag before attempting screen share
 
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -770,8 +770,32 @@ const Form = () => {
 
             // Use setTimeout to allow hardware/browser to release the camera before restarting
             setTimeout(() => {
-                console.log('requestScreenCapture: Delay finished. Requesting camera start for test phase...');
-                startCamera('test'); // Pass phase for logging
+                const startTestCamera = async () => {
+                    console.log('requestScreenCapture (setTimeout): Attempting startCamera("test")...');
+                    try {
+                        await startCamera('test'); // Wait for startCamera to attempt acquisition
+                        console.log('requestScreenCapture (setTimeout): startCamera("test") initiated (async).');
+
+                        // --- Set submitted state AFTER initiating camera start ---
+                        // This allows the test UI to render, and useEffects will handle the camera state changes.
+                        setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE
+                        setIsFaceDetectionGracePeriod(true); // Start grace period
+
+                    } catch (startError) {
+                        // This catch might not be strictly necessary if startCamera handles its own errors well,
+                        // but it adds an extra layer of safety for unexpected issues during the call itself.
+                        console.error('requestScreenCapture (setTimeout): Error occurred *during* the call to startCamera("test"):', startError);
+                        // Handle failure to start the test camera
+                        setCameraError("Failed to restart camera for the test. Please try again.");
+                        setSubmitted(false); // Ensure we don't proceed to test phase
+                        setIsFaceDetectionGracePeriod(false);
+                        // Optionally stop screen sharing stream if camera fails?
+                        if (stream) stream.getTracks().forEach(track => track.stop());
+                        setMediaStream(null);
+                        setShowInstructions(true); // Maybe go back to instructions? Or show a specific error popup.
+                    }
+                };
+                startTestCamera(); // Pass phase for logging
             }, 200); // Increased delay slightly (e.g., 200ms)
 
             setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE TO START TEST PHASE
