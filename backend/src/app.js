@@ -9,11 +9,25 @@ connectDB();
 
 const app = express();
 
-app.use(cors({
-    origin: '*', // your frontend
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
-    credentials: true
-}));
+const allowedOrigins = [process.env.MONGODB_URI]; // Add other origins if needed (e.g., deployed frontend URL)
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'], // <<<=== Ensure PATCH is included here!
+  allowedHeaders: ['Content-Type', 'Authorization'], // Add other headers your frontend might send
+  credentials: true // If you need to handle cookies or authorization headers
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Allow larger payloads for images/screenshots
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 

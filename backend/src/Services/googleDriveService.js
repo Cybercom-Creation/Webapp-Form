@@ -101,148 +101,191 @@ const findOrCreateFolder = async (drive, folderName, parentFolderId, shareWithUs
     }
 };
 
-// --- Upload Screenshot ---
-const uploadScreenshotToDrive = async (userName, base64Data, fileName) => {
-    if (!userName || !base64Data || !fileName) {
-        throw new Error('User name, base64 data, and file name are required for upload.');
+
+// --- NEW: Get SINGLE User Folder Details ---
+/**
+ * Finds or creates the user's single dedicated folder (named after username) and returns its ID and webViewLink.
+ * @param {string} userName - The user's name (used for folder naming).
+ * @returns {Promise<{id: string, link: string}>} - The ID and webViewLink of the user's folder.
+ */
+const getUserDriveFolderDetails = async (userName) => {
+    if (!userName) {
+        throw new Error('User name is required to get user Drive folder details.');
+    }
+    // Sanitize username for folder name
+    const userFolderName = userName.replace(/[^a-zA-Z0-9\s_-]/g, '_');
+
+    try {
+        const drive = await authenticate();
+
+        // 1. Find/Create Main Folder ('Test')
+        console.log(`[Drive Service - User Folder] Step 1: Finding/Creating main folder '${MAIN_FOLDER_NAME}'...`);
+        const mainFolderId = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, 'root', false);
+        console.log(`[Drive Service - User Folder] Main folder ID: ${mainFolderId}`);
+
+        // 2. Find/Create the SINGLE User Folder (named userName) inside the main folder
+        console.log(`[Drive Service - User Folder] Step 2: Finding/Creating user folder '${userFolderName}' inside '${mainFolderId}'...`);
+        const userFolderId = await findOrCreateFolder(drive, userFolderName, mainFolderId, true); // Share with TARGET_USER_EMAIL
+        console.log(`[Drive Service - User Folder] User folder ID: ${userFolderId}`);
+
+        // 3. Get the webViewLink for the user folder
+        console.log(`[Drive Service - User Folder] Step 3: Fetching webViewLink for folder ID: ${userFolderId}...`);
+        const folderDetails = await drive.files.get({ fileId: userFolderId, fields: 'webViewLink' });
+        const folderLink = folderDetails.data.webViewLink;
+
+        if (!folderLink) console.warn(`[Drive Service - User Folder] Could not retrieve webViewLink for folder ID: ${userFolderId}`);
+        else console.log(`[Drive Service - User Folder] User folder link: ${folderLink}`);
+
+        return { id: userFolderId, link: folderLink || null }; // Return ID and Link
+
+    } catch (error) {
+        console.error(`[Drive Service - User Folder] Error getting folder details for user '${userName}':`, error);
+        throw new Error(`Failed to get user Drive folder details: ${error.message}`);
+    }
+};
+
+
+
+// --- MODIFIED: Upload Screenshot ---
+/**
+ * Uploads a screenshot to the specified user's Google Drive folder.
+ * @param {string} userFolderId - The ID of the user's dedicated Drive folder.
+ * @param {string} base64Data - The base64 encoded screenshot data (e.g., from canvas.toDataURL()).
+ * @param {string} fileName - The desired filename for the screenshot.
+ * @returns {Promise<{id: string, link: string}>} - The ID and webViewLink of the uploaded screenshot file.
+ */
+const uploadScreenshotToDrive = async (userFolderId, base64Data, fileName) => {
+    // Validate inputs
+    if (!userFolderId || !base64Data || !fileName) {
+        throw new Error('User folder ID, base64 data, and file name are required for screenshot upload.');
+    }
+    if (!base64Data.startsWith('data:image/')) {
+         console.warn('[Drive Service - Screenshot] base64Data does not start with "data:image/".');
     }
 
     try {
         const drive = await authenticate();
 
-        // 1. Find or create the main folder. Don't share this one explicitly here,
-        // assuming it's already shared correctly with the service account.
-        console.log(`[Drive Service] Step 1: Finding/Creating main folder '${MAIN_FOLDER_NAME}'...`);
-        const mainFolderId = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, 'root', false); // shareWithUser = false
-        console.log(`[Drive Service] Main folder ID determined as: ${mainFolderId}`);
+        // --- Folder creation is now handled BEFORE calling this function ---
 
-        // 2. Find or create the user-specific folder inside the main folder
-        // *** Share this user folder with the target user ***
-        console.log(`[Drive Service] Step 2: Finding/Creating user folder '${userName}' inside '${mainFolderId}'...`);
-        const userFolderId = await findOrCreateFolder(drive, userName, mainFolderId, true); // shareWithUser = true
-        console.log(`[Drive Service] User folder ID determined as: ${userFolderId}`);
-
-        // 3. Prepare file metadata and media content
+        // 1. Prepare file metadata and media content
         const fileMetadata = {
             name: fileName,
-            parents: [userFolderId],
+            parents: [userFolderId], // <<< Use the provided userFolderId
         };
 
-        const base64Image = base64Data.split(';base64,').pop();
-        if (!base64Image) { throw new Error('Invalid base64 data format.'); }
+        const match = base64Data.match(/^data:(image\/\w+);base64,(.*)$/);
+        if (!match || match.length !== 3) throw new Error('Invalid base64 data format.');
+        const mimeType = match[1];
+        const base64Image = match[2];
 
         const buffer = Buffer.from(base64Image, 'base64');
         const bufferStream = new stream.PassThrough();
         bufferStream.end(buffer);
 
-        const media = { mimeType: 'image/png', body: bufferStream };
+        const media = { mimeType: mimeType, body: bufferStream };
 
-        // 4. Upload the file
-        console.log(`[Drive Service] Step 3: Uploading '${fileName}' to user folder ID: ${userFolderId}...`);
+        // 2. Upload the file
+        console.log(`[Drive Service - Screenshot] Uploading '${fileName}' (${mimeType}) to user folder ID: ${userFolderId}...`);
         const uploadedFile = await drive.files.create({
             resource: fileMetadata,
             media: media,
-            fields: 'id, name',
+            fields: 'id, name, webViewLink',
         });
 
         const uploadedFileId = uploadedFile.data.id;
-        console.log(`[Drive Service] File '${uploadedFile.data.name}' uploaded successfully with ID: ${uploadedFileId}`);
+        const uploadedFileLink = uploadedFile.data.webViewLink;
+        console.log(`[Drive Service - Screenshot] File '${uploadedFile.data.name}' uploaded successfully. ID: ${uploadedFileId}, Link: ${uploadedFileLink}`);
 
-        // Optional: Explicitly share the individual file too? Usually sharing the folder is enough.
+        // Optional: Add specific permissions (usually folder permissions are enough)
         // await addEditorPermission(drive, uploadedFileId, TARGET_USER_EMAIL);
 
-        return uploadedFileId;
+        return { id: uploadedFileId, link: uploadedFileLink };
 
     } catch (error) {
-        console.error(`[Drive Service] Error uploading screenshot '${fileName}' for user '${userName}':`, error);
+        console.error(`[Drive Service - Screenshot] Error uploading screenshot '${fileName}':`, error);
         throw new Error(`Failed to upload screenshot to Google Drive: ${error.message}`);
     }
 };
-const uploadProfilePhotoToDrive = async (userName, base64Data, fileName) => {
+
+
+
+
+// --- MODIFIED: Upload Profile Photo ---
+/**
+ * Uploads the profile photo to the specified user's Google Drive folder.
+ * @param {string} userFolderId - The ID of the user's dedicated Drive folder.
+ * @param {string} base64Data - The base64 encoded photo data (JPEG expected).
+ * @param {string} fileName - The desired filename for the photo.
+ * @returns {Promise<{id: string, link: string}>} - The ID and webViewLink of the uploaded photo file.
+ */
+const uploadProfilePhotoToDrive = async (userFolderId, base64Data, fileName) => {
     // Input validation
-    if (!userName || !base64Data || !fileName) {
-        throw new Error('User name, base64 data, and file name are required for upload.');
+    if (!userFolderId || !base64Data || !fileName) {
+        throw new Error('User folder ID, base64 data, and file name are required for profile photo upload.');
     }
     if (!base64Data.startsWith('data:image/jpeg;base64,')) {
-        console.warn('[Drive Service] Profile photo base64 data does not start with "data:image/jpeg;base64,". Attempting upload anyway.');
-        // You might want stricter validation here depending on your frontend guarantees
+        console.warn('[Drive Service - Profile Photo] base64Data does not start with "data:image/jpeg;base64,".');
     }
 
     try {
         const drive = await authenticate();
 
-        // 1. Find/Create Main Folder (reuse existing logic)
-        console.log(`[Drive Service - Profile Photo] Step 1: Finding/Creating main folder '${MAIN_FOLDER_NAME}'...`);
-        const mainFolderId = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, 'root', false);
-        console.log(`[Drive Service - Profile Photo] Main folder ID: ${mainFolderId}`);
+        // --- Folder creation is now handled BEFORE calling this function ---
 
-        // 2. Find/Create User Folder (reuse existing logic, ensure sharing)
-        console.log(`[Drive Service - Profile Photo] Step 2: Finding/Creating user folder '${userName}' inside '${mainFolderId}'...`);
-        const userFolderId = await findOrCreateFolder(drive, userName, mainFolderId, true); // Share with TARGET_USER_EMAIL
-        console.log(`[Drive Service - Profile Photo] User folder ID: ${userFolderId}`);
-
-        // 3. Prepare file metadata and media content
+        // 1. Prepare file metadata and media content
         const fileMetadata = {
             name: fileName,
-            parents: [userFolderId],
+            parents: [userFolderId], // <<< Use the provided userFolderId
         };
 
-        // Decode Base64 - remove the prefix
         const base64Image = base64Data.split(';base64,').pop();
-        if (!base64Image) { throw new Error('Invalid base64 data format.'); }
+        if (!base64Image) throw new Error('Invalid base64 data format.');
 
         const buffer = Buffer.from(base64Image, 'base64');
         const bufferStream = new stream.PassThrough();
         bufferStream.end(buffer);
 
-        // *** The Key Change: Set the correct MIME type for JPEG ***
         const media = { mimeType: 'image/jpeg', body: bufferStream };
 
-        // 4. Upload the file
-        console.log(`[Drive Service - Profile Photo] Step 3: Uploading '${fileName}' to user folder ID: ${userFolderId}...`);
+        // 2. Upload the file
+        console.log(`[Drive Service - Profile Photo] Uploading '${fileName}' to user folder ID: ${userFolderId}...`);
         const uploadedFile = await drive.files.create({
             resource: fileMetadata,
             media: media,
-            fields: 'id, name, webViewLink', // Get the link too!
+            fields: 'id, name, webViewLink',
         });
 
         const uploadedFileId = uploadedFile.data.id;
-        const uploadedFileLink = uploadedFile.data.webViewLink; // Capture the link
+        const uploadedFileLink = uploadedFile.data.webViewLink;
         console.log(`[Drive Service - Profile Photo] File '${uploadedFile.data.name}' uploaded successfully. ID: ${uploadedFileId}, Link: ${uploadedFileLink}`);
 
-        // *** Step 5: Add Public Read Permission to the File ***
+        // 3. Add Public Read Permission (Keep this logic)
         try {
             console.log(`[Drive Service - Profile Photo] Setting public read permission for file ID: ${uploadedFileId}`);
             await drive.permissions.create({
                 fileId: uploadedFileId,
-                requestBody: {
-                    role: 'reader', // Allows viewing
-                    type: 'anyone', // Specifies that anyone (no sign-in required) can access
-                },
+                requestBody: { role: 'reader', type: 'anyone' },
             });
             console.log(`[Drive Service - Profile Photo] Public read permission set successfully for file ID: ${uploadedFileId}`);
         } catch (permError) {
-            // Log the error but don't necessarily fail the whole process
-            console.error(`[Drive Service - Profile Photo] Warning: Failed to set public read permission for file ID ${uploadedFileId}. The link might require users to request access. Error:`, permError.response ? permError.response.data : permError.message);
-            // You could choose to throw the error here if public access is absolutely critical
-            // throw new Error(`Failed to set public permissions on uploaded file: ${permError.message}`);
+            const errorMessage = permError.response?.data?.error?.message || permError.message;
+            console.error(`[Drive Service - Profile Photo] Warning: Failed to set public read permission for file ID ${uploadedFileId}. Link might require sign-in. Error: ${errorMessage}`);
         }
-        // *** End Permission Setting ***
 
-        // Optional: Add specific permissions to the file itself if needed
-        // await addEditorPermission(drive, uploadedFileId, TARGET_USER_EMAIL);
-
-        // Return both ID and Link, as the link is often more useful for direct access
         return { id: uploadedFileId, link: uploadedFileLink };
 
     } catch (error) {
-        console.error(`[Drive Service - Profile Photo] Error uploading profile photo '${fileName}' for user '${userName}':`, error);
-        // Consider more specific error handling or re-throwing
+        console.error(`[Drive Service - Profile Photo] Error uploading profile photo '${fileName}':`, error);
         throw new Error(`Failed to upload profile photo to Google Drive: ${error.message}`);
     }
 };
 
+
+
+
 module.exports = {
     uploadScreenshotToDrive,
     uploadProfilePhotoToDrive,
+    getUserDriveFolderDetails,
 };

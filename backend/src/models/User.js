@@ -28,6 +28,13 @@ const UserSchema = new mongoose.Schema({
         required: [true, 'Initial photo is required'],
     },
     photoDriveLink: { type: String },
+    // --- NEW FIELDS ---
+    driveFolderId: { type: String }, // Store the Google Drive Folder ID
+    driveFolderLink: { type: String }, // Store the web link to the folder
+    testStartTime: { type: Date }, // For Feature 3
+    testEndTime: { type: Date },   // For Feature 3
+    testDurationMs: { type: Number }, // For Feature 3 (Optional, can be calculated)
+    // --- END NEW FIELDS ---
     createdAt: {
         type: Date,
         default: Date.now,
@@ -35,4 +42,16 @@ const UserSchema = new mongoose.Schema({
     
 });
 
+// Optional virtuals (keep as is)
+UserSchema.virtual('testDurationMinutes').get(function() {
+    if (this.testStartTime && this.testEndTime) {
+      const durationMs = this.testEndTime.getTime() - this.testStartTime.getTime();
+      return Math.round(durationMs / (1000 * 60));
+    }
+    return null;
+  });
+  UserSchema.set('toJSON', { virtuals: true });
+  UserSchema.set('toObject', { virtuals: true });
+
 module.exports = mongoose.model('User', UserSchema); // 'User' will be the collection name (pluralized to 'users')
+// Note: Mongoose will automatically pluralize the model name to create the collection name in MongoDB
