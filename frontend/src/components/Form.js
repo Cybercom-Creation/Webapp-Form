@@ -54,7 +54,7 @@ const Form = () => {
     // --- Configuration for Consecutive Noise Alert ---
     const REQUIRED_CONSECUTIVE_NOISE_COUNT = 4; // Trigger after 4 consecutive violations
     const NOISE_TIME_WINDOW_MS = 10000; // Within 10 seconds
-    const CONSECUTIVE_FRAME_TIME_MS = 3000; // Max time between frames to be considered consecutive (adjust if needed)
+    const NOISE_RESET_INACTIVITY_MS = 5000;
     // --- End Configuration ---
 
     // --- Refs to track consecutive noise ---
@@ -999,82 +999,113 @@ const Form = () => {
             firstNoiseViolationInSequenceTimestampRef.current = null;
             lastNoiseViolationTimestampRef.current = null;
             // console.log("[Noise Effect] Monitoring stopped, resetting counters.");
+            // Ensure warning is hidden if monitoring stops
+            if (showWarning && currentWarningType === 'high_noise') {
+                 setShowWarning(false);
+                 setCurrentWarningType(null);
+                 setWarningStartTime(null);
+            }
             return;
         }
 
         const now = Date.now();
 
         if (isNoiseLevelHigh) {
+            // --- Noise is currently HIGH ---
             console.log(`[Noise Effect] High noise detected at ${now}`);
+            lastNoiseViolationTimestampRef.current = now; // Always update last violation time when high
 
             if (firstNoiseViolationInSequenceTimestampRef.current === null) {
                 // --- Case 1: This is the FIRST violation in a potential sequence ---
                 console.log("   Starting new noise sequence.");
                 firstNoiseViolationInSequenceTimestampRef.current = now;
-                lastNoiseViolationTimestampRef.current = now; // Record the time of this violation
                 consecutiveNoiseCountRef.current = 1;
                 console.log(`   [consecutiveNoiseCountRef] set to 1. First timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
 
             } else {
-                // --- Case 2: This is a SUBSEQUENT violation ---
+                // --- Case 2: This is a SUBSEQUENT violation in an existing sequence ---
                 const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
                 console.log(`   Continuing sequence. Time since first: ${timeSinceFirst}ms (Window: ${NOISE_TIME_WINDOW_MS}ms)`);
 
-                // --- *** NEW CHECK: Has the time window expired? *** ---
+                // Check if the sequence's time window has expired
                 if (timeSinceFirst > NOISE_TIME_WINDOW_MS) {
                     // The sequence timed out before reaching the required count.
                     // Reset and start a NEW sequence with THIS violation.
                     console.log("   Time window expired before reaching count. Resetting and starting new sequence.");
                     firstNoiseViolationInSequenceTimestampRef.current = now;
-                    lastNoiseViolationTimestampRef.current = now;
                     consecutiveNoiseCountRef.current = 1;
                     console.log(`   [consecutiveNoiseCountRef] reset to 1. New first timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
                 } else {
-                    // --- Time window is still valid, proceed with incrementing ---
-                    consecutiveNoiseCountRef.current += 1;
-                    lastNoiseViolationTimestampRef.current = now; // Update the last violation time
-                    console.log(`   [consecutiveNoiseCountRef] incremented to ${consecutiveNoiseCountRef.current}. Last timestamp: ${lastNoiseViolationTimestampRef.current}`);
+                    // Time window is still valid. Increment count (only if it hasn't reached the threshold yet? No, let it increment)
+                    // We only increment if this isn't the *exact* same timestamp as the first to avoid double counting on rapid calls
+                    if (now > firstNoiseViolationInSequenceTimestampRef.current) {
+                         // Only increment if it's truly a subsequent event in time
+                         // Check if we are *just* hitting the threshold or already past it
+                         if (consecutiveNoiseCountRef.current < REQUIRED_CONSECUTIVE_NOISE_COUNT) {
+                            consecutiveNoiseCountRef.current += 1;
+                            console.log(`   [consecutiveNoiseCountRef] incremented to ${consecutiveNoiseCountRef.current}.`);
+                         } else {
+                            // Count is already at or above threshold, just log that noise continues
+                            console.log(`   [consecutiveNoiseCountRef] already at ${consecutiveNoiseCountRef.current} (>=${REQUIRED_CONSECUTIVE_NOISE_COUNT}). Noise continues.`);
+                         }
+                    }
 
-                    // --- Check if the threshold is met WITHIN the time window ---
+
+                    // Check if the threshold is met or exceeded WITHIN the time window
                     if (consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT) {
-                        // We have reached the required count within the allowed time window.
-                        console.warn(`   [Alert Triggered] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
+                        console.warn(`   [Alert Condition Met] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
 
                         // Show warning only if not already showing this specific warning
                         if (!showWarning || currentWarningType !== 'high_noise') {
+                            console.log("   Triggering 'high_noise' warning popup.");
                             setShowWarning(true);
                             setCurrentWarningType('high_noise');
-                            setWarningStartTime(now); // Timestamp when the threshold was met
+                            // Set warning start time only when it *first* triggers
+                            if (!warningStartTime) { // Or check if currentWarningType was different
+                                setWarningStartTime(now);
+                            }
                         }
-
-                        // --- Reset everything AFTER triggering the alert ---
-                        console.log("   Resetting count after alert.");
-                        consecutiveNoiseCountRef.current = 0;
-                        firstNoiseViolationInSequenceTimestampRef.current = null;
-                        lastNoiseViolationTimestampRef.current = null;
+                        // --- DO NOT RESET COUNTERS HERE ---
                     }
-                    // else: Threshold not met yet, but window is still valid. Keep monitoring.
                 }
             }
         } else {
-            // Optional: Log when noise level drops below threshold for debugging
+            // --- Noise is currently LOW ---
             // console.log(`[Noise Effect] Noise level normal at ${now}`);
 
-            // --- Decide if a drop in noise should reset the counter ---
-            // Current logic doesn't reset on noise drop, only on timeout or successful alert.
-            // This means a brief quiet period won't break the sequence unless the *next*
-            // high noise event falls outside the NOISE_TIME_WINDOW_MS from the *first* event.
-            // If you wanted *strictly* consecutive frames without interruption, you'd add:
-            // consecutiveNoiseCountRef.current = 0;
-            // firstNoiseViolationInSequenceTimestampRef.current = null;
-            // lastNoiseViolationTimestampRef.current = null;
+            // Check if a sequence was active and if enough time has passed since the LAST violation
+            if (lastNoiseViolationTimestampRef.current !== null) {
+                const timeSinceLastViolation = now - lastNoiseViolationTimestampRef.current;
+                // console.log(`   Time since last violation: ${timeSinceLastViolation}ms (Reset threshold: ${NOISE_RESET_INACTIVITY_MS}ms)`);
+
+                if (timeSinceLastViolation > NOISE_RESET_INACTIVITY_MS) {
+                    // --- Reset the sequence due to inactivity ---
+                    console.log(`   [Resetting Counters] Noise low for ${timeSinceLastViolation}ms (>${NOISE_RESET_INACTIVITY_MS}ms). Resetting sequence.`);
+                    consecutiveNoiseCountRef.current = 0;
+                    firstNoiseViolationInSequenceTimestampRef.current = null;
+                    lastNoiseViolationTimestampRef.current = null; // Clear last violation time too
+
+                    // --- Hide the warning IF it was specifically a high_noise warning ---
+                    // (The close button logic already handles preventing closure while noise is high)
+                    // This handles hiding it automatically if noise stays low long enough.
+                    if (showWarning && currentWarningType === 'high_noise') {
+                        console.log("Hiding 'high_noise' warning due to inactivity reset.");
+                        setShowWarning(false);
+                        setCurrentWarningType(null);
+                        setWarningStartTime(null);
+                    }
+                }
+                // else: Noise is low, but not for long enough to reset yet. Do nothing.
+            }
+            // else: Noise is low, and no sequence was active. Do nothing.
         }
 
     }, [
         isNoiseLevelHigh,
         isAudioMonitoringActive,
-        showWarning,
-        currentWarningType,
+        showWarning, // Need this to check if we need to show/hide
+        currentWarningType, // Need this to check if we need to show/hide
+        warningStartTime, // Need this for setting start time correctly
     ]);
         
 
