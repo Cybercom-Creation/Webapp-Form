@@ -9,7 +9,7 @@ connectDB();
 
 const app = express();
 
-const allowedOrigins = [process.env.REACT_APP_API_BASE_URL]; // Add other origins if needed (e.g., deployed frontend URL)
+const allowedOrigins = [process.env.FRONTEND_URL]; // Add other origins if needed (e.g., deployed frontend URL)
 
 const corsOptions = {
   origin: function (origin, callback) {
