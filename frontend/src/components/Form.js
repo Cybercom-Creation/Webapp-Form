@@ -281,6 +281,56 @@ const Form = () => {
     }, [submitted, isCameraOn, stopCamera]);
 
 
+    // --- Function to call backend to mark test start ---
+    const markTestStart = useCallback(async () => {
+        if (!userId) {
+            console.error("Cannot mark test start: userId is missing.");
+            return;
+        }
+        try {
+            console.log(`Calling backend to mark test start for user: ${userId}`);
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users/${userId}/start-test`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                // No body needed for this simple trigger
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Failed to mark test start (Status: ${response.status})`);
+            }
+            const result = await response.json();
+            console.log('Backend confirmed test start:', result.message);
+        } catch (error) {
+            console.error('Error calling markTestStart endpoint:', error);
+            // Decide how to handle this - maybe retry? Show user error?
+        }
+    }, [userId]); // Dependency on userId
+
+    // --- Function to call backend to mark test end ---
+    const markTestEnd = useCallback(async () => {
+        if (!userId) {
+            console.error("Cannot mark test end: userId is missing.");
+            return;
+        }
+        try {
+            console.log(`Calling backend to mark test end for user: ${userId}`);
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users/${userId}/end-test`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+            });
+             if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Failed to mark test end (Status: ${response.status})`);
+            }
+            const result = await response.json();
+            console.log('Backend confirmed test end:', result.message);
+        } catch (error) {
+            console.error('Error calling markTestEnd endpoint:', error);
+        }
+    }, [userId]); // Dependency on userId
+
+
+
      // --- Effect: Show Email Reminder Dialog on Test Start ---
      useEffect(() => {
         // Check if the test area is active AND the dialog hasn't been shown yet for this session
@@ -725,6 +775,55 @@ const Form = () => {
         }
     }, [submitted, userId, mediaStream, isTimeOver]); // Added mediaStream
 
+    // --- NEW: Effect to handle page unload during active test ---
+    useEffect(() => {
+        // Define the handler function
+        const handleBeforeUnload = (event) => {
+            // Check *inside* the handler if the test is still active
+            // Use refs or state values that are guaranteed to be current if possible,
+            // but state within the closure should be okay here due to dependency array.
+            if (submitted && userId && !isTimeOver) {
+                console.log(">>> beforeunload triggered during active test. Sending beacon to mark end time.");
+
+                // Construct the URL for the NEW POST endpoint
+                const beaconURL = `${process.env.REACT_APP_API_BASE_URL}/api/users/${userId}/beacon-end-test`;
+
+                // sendBeacon requires data. Send an empty Blob as the body.
+                const data = new Blob([''], { type: 'application/json' });
+
+                // Attempt to send the beacon
+                const success = navigator.sendBeacon(beaconURL, data);
+
+                if (success) {
+                    console.log("Beacon queued successfully to mark end time.");
+                } else {
+                    console.error("Failed to queue beacon to mark end time. Test duration might not be saved.");
+                    // No reliable fallback here during unload.
+                }
+
+                // Don't set event.returnValue - it's deprecated and unreliable for preventing closure.
+                // Let the browser handle the closing/navigation.
+            } else {
+                console.log(">>> beforeunload triggered, but test is not active. No action needed.");
+            }
+        };
+
+        // Add the listener only when the test is active
+        if (submitted && userId && !isTimeOver) {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+            console.log("<<< beforeunload listener added for active test >>>");
+
+            // Return a cleanup function to remove the listener
+            return () => {
+                window.removeEventListener('beforeunload', handleBeforeUnload);
+                console.log("<<< beforeunload listener removed >>>");
+            };
+        }
+        // Ensure the effect re-runs if the test status changes
+    }, [submitted, userId, isTimeOver]);
+    // --- End NEW Effect ---
+
+
 
     // --- Timer Logic (Unchanged) ---
     // ... (No changes needed here)
@@ -739,6 +838,7 @@ const Form = () => {
                         // Optionally stop camera/screen share here if time runs out
                         if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
                         stopCamera(); // Stop webcam too
+                        markTestEnd();
                         return 0;
                     }
                     return prev - 1;
@@ -746,7 +846,7 @@ const Form = () => {
             }, 1000);
             return () => clearInterval(interval);
         }
-    }, [submitted, mediaStream, stopCamera]); // Added stopCamera dependency
+    }, [submitted, mediaStream, stopCamera, markTestEnd]); // Added stopCamera dependency
 
 
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
@@ -821,6 +921,8 @@ const Form = () => {
 
             setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE TO START TEST PHASE
             setIsFaceDetectionGracePeriod(true);
+
+            markTestStart(); // Call backend to mark test start
 
             // const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {

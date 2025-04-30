@@ -10,10 +10,12 @@ connectDB();
 const app = express();
 
 app.use(cors({
-    origin: '*', // your frontend
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // or '*' for all
-    credentials: true
+  origin: '*', // your frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'], // or '*' for all
+  credentials: true
 }));
+
 app.use(express.json({ limit: '10mb' })); // Allow larger payloads for images/screenshots
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 

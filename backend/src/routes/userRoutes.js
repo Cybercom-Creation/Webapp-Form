@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require('../models/User'); // Import the User model
 
 // *** Import the Google Drive upload function ***
-const { uploadProfilePhotoToDrive } = require('../Services/googleDriveService'); // Adjust path if needed
+const { uploadProfilePhotoToDrive, getUserDriveFolderDetails } = require('../Services/googleDriveService'); // Adjust path if needed
 
 
 // --- POST /api/users ---
@@ -16,6 +16,7 @@ router.post('/', async (req, res) => {
         if (!name || !email || !phone || !photoBase64) {
             return res.status(400).json({ message: 'Missing required fields' });
         }
+       
 
         // Optional: More specific validation for photoBase64 if provided
         if (photoBase64 && typeof photoBase64 !== 'string') {
@@ -35,28 +36,50 @@ router.post('/', async (req, res) => {
             return res.status(409).json({ message: `${conflictField} already exists.` });
         }
 
+        // --- 1. Get/Create the SINGLE User Drive Folder ---
+        let userDriveFolder = { id: null, link: null };
+        try {
+            console.log(`[Routes] Getting/Creating Drive folder for user: ${name}`);
+            userDriveFolder = await getUserDriveFolderDetails(name); // Use the new function
+            if (userDriveFolder && userDriveFolder.id) {
+                 console.log(`[Routes] User Drive Folder ID: ${userDriveFolder.id}, Link: ${userDriveFolder.link}`);
+            } else {
+                 console.warn(`[Routes] Failed to get user Drive folder details for user ${name}. Proceeding without folder info.`);
+                 userDriveFolder = { id: null, link: null }; // Ensure reset
+            }
+        } catch (folderError) {
+            console.error('[Routes] Google Drive user folder creation/retrieval failed:', folderError);
+            userDriveFolder = { id: null, link: null }; // Ensure reset on error
+            // Decide if this is critical. For now, proceed but log.
+        }
+        // --- End Folder Creation ---
+
+
 
         // --- Upload Photo to Google Drive ---
-        let photoDriveLink = null; // Initialize link as null
-        if (photoBase64) { // Only attempt upload if photo data exists
+           let photoUploadResult = { id: null, link: null };
+        if (photoBase64 && userDriveFolder.id) { // Only attempt upload if photo data exists
             try {
-                // Generate a filename (use user's name or email for folder, specific name for file)
-                const safeUserNameForFolder = name.replace(/[^a-zA-Z0-9\s_-]/g, '_'); // Basic sanitization
+                
                 const fileName = `profile_${Date.now()}.jpg`; // Unique filename
 
-                console.log(`[Routes] Attempting to upload photo for user ${email} (folder: ${safeUserNameForFolder}) as ${fileName}`);
+                console.log(`[Routes] Attempting to upload photo for user ${email} to folder ${userDriveFolder.id} as ${fileName}`);
+                // --- END FIX ---
 
-                // *** Call the service function ***
-                const driveFileData = await uploadProfilePhotoToDrive(safeUserNameForFolder, photoBase64, fileName);
+              // Store the object result here
+              photoUploadResult = await uploadProfilePhotoToDrive(userDriveFolder.id, photoBase64, fileName);
 
-                if (driveFileData && driveFileData.link) {
-                    photoDriveLink = driveFileData.link; // Store the link if upload succeeded
-                    console.log(`[Routes] Successfully uploaded photo to Drive. Link: ${photoDriveLink}`);
-                } else {
-                    console.warn(`[Routes] Failed to upload profile photo to Drive for user ${email}. Proceeding without Drive link.`);
-                }
+             // --- FIX: Correct console log to show the actual link ---
+             if (photoUploadResult && photoUploadResult.link) {
+                console.log(`[Routes] Successfully uploaded photo to Drive. Link: ${photoUploadResult.link}`); // Log the .link property
+            } else {
+                console.warn(`[Routes] Failed to upload profile photo to Drive for user ${email}. Proceeding without Drive link.`);
+                photoUploadResult = { id: null, link: null }; // Reset on failure
+            }
+                
             } catch (uploadError) {
                 console.error("[Routes] Error during profile photo upload:", uploadError.message || uploadError);
+                photoDriveLink = { id: null, link: null };
                 // Log the error and proceed without the link (photoDriveLink remains null)
                 // Optionally, you could return an error to the user here if the upload is critical
                 // return res.status(500).json({ message: 'Failed to upload profile photo.' });
@@ -71,7 +94,10 @@ router.post('/', async (req, res) => {
             email,
             phone,
             photoBase64: photoBase64 || null, // Save original base64 or null
-            photoDriveLink: photoDriveLink    // Save the drive link (or null if failed/not provided)
+            photoDriveLink: photoUploadResult.link,   // Save the drive link (or null if failed/not provided)
+            driveFolderId: userDriveFolder.id,       // <-- SAVE FOLDER ID
+            driveFolderLink: userDriveFolder.link, // <-- SAVE FOLDER LINK
+
             // createdAt will be added automatically by Mongoose if defined in schema
         });
 
@@ -124,6 +150,160 @@ router.post('/check-field', async (req, res) => {
     } catch (error) {
         console.error(`Error checking field ${field}:`, error);
         res.status(500).json({ message: 'Server error checking field availability' });
+    }
+});
+
+
+
+// PATCH /api/users/:userId/start-test - Mark test start time
+router.patch('/:userId/start-test', async (req, res) => {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Only set start time if it hasn't been set already
+        if (!user.testStartTime) {
+            user.testStartTime = new Date();
+
+
+            await user.save();
+
+             // --- ADD LOGGING AFTER SAVE ---
+             try {
+                await user.save();
+                console.log(`[Start Test Route] Successfully saved start time for user ${userId}`); // <-- ADD THIS
+            } catch (saveError) {
+                console.error(`[Start Test Route] Error saving user after setting start time for ${userId}:`, saveError); // <-- ADD THIS
+                // Decide if you should return an error to the client here
+                return res.status(500).json({ message: 'Failed to save test start time.' });
+            }
+            // --- END LOGGING ---
+            console.log(`Test start time marked for user ${userId} at ${user.testStartTime}`);
+            res.status(200).json({ message: 'Test start time recorded.', testStartTime: user.testStartTime });
+        } else {
+            console.log(`Test start time already recorded for user ${userId}.`);
+            res.status(200).json({ message: 'Test start time was already recorded.', testStartTime: user.testStartTime });
+        }
+
+    } catch (error) {
+        console.error(`Error marking test start for user ${userId}:`, error);
+         if (error.name === 'CastError') {
+             return res.status(400).json({ message: 'Invalid userId format.' });
+         }
+        res.status(500).json({ message: 'Server error marking test start time.' });
+    }
+});
+
+// PATCH /api/users/:userId/end-test - Mark test end time and calculate duration
+router.patch('/:userId/end-test', async (req, res) => {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Only set end time if start time exists and end time hasn't been set
+        if (user.testStartTime && !user.testEndTime) {
+            user.testEndTime = new Date();
+
+            
+
+            // Calculate and store duration in milliseconds
+            user.testDurationMs = user.testEndTime.getTime() - user.testStartTime.getTime();
+
+            await user.save();
+            // --- ADD LOGGING AFTER SAVE ---
+            try {
+                await user.save();
+                console.log(`[End Test Route] Successfully saved end time and duration (${user.testDurationMs}ms) for user ${userId}`); // <-- ADD THIS
+            } catch (saveError) {
+                console.error(`[End Test Route] Error saving user after setting end time/duration for ${userId}:`, saveError); // <-- ADD THIS
+                return res.status(500).json({ message: 'Failed to save test end time and duration.' });
+            }
+            // --- END LOGGING ---
+
+            console.log(`Test end time marked for user ${userId} at ${user.testEndTime}. Duration: ${user.testDurationMs}ms`);
+            res.status(200).json({
+                message: 'Test end time recorded.',
+                testEndTime: user.testEndTime,
+                testDurationMs: user.testDurationMs
+            });
+        } else if (!user.testStartTime) {
+             console.log(`Cannot mark end time for user ${userId}: Start time not recorded.`);
+             res.status(400).json({ message: 'Test start time was never recorded.' });
+        } else {
+            console.log(`Test end time already recorded for user ${userId}.`);
+            res.status(200).json({
+                message: 'Test end time was already recorded.',
+                testEndTime: user.testEndTime,
+                testDurationMs: user.testDurationMs
+             });
+        }
+
+    } catch (error) {
+        console.error(`Error marking test end for user ${userId}:`, error);
+         if (error.name === 'CastError') {
+             return res.status(400).json({ message: 'Invalid userId format.' });
+         }
+        res.status(500).json({ message: 'Server error marking test end time.' });
+    }
+});
+
+
+
+// --- NEW: POST route specifically for beforeunload beacon ---
+router.post('/:userId/beacon-end-test', async (req, res) => {
+    const { userId } = req.params;
+    console.log(`[Beacon] Received request to end test for user ${userId}`); // Log beacon reception
+
+    try {
+        const user = await User.findById(userId);
+        // Check if user exists and test hasn't already ended
+        if (!user) {
+            // Don't send 404, as beacon doesn't process responses. Just log.
+            console.log(`[Beacon] User not found: ${userId}`);
+            return res.status(204).send(); // Send No Content, success but nothing to return
+        }
+        if (user.testEndTime) {
+            console.log(`[Beacon] Test already ended for user: ${userId}`);
+            return res.status(204).send();
+        }
+        if (!user.testStartTime) {
+            console.log(`[Beacon] Test start time not recorded for user: ${userId}. Cannot mark end.`);
+            return res.status(204).send(); // Or maybe 400 if you could process it
+        }
+
+        // --- Same logic as PATCH /end-test ---
+        user.testEndTime = new Date(); // Record current time as end time
+        user.testDurationMs = user.testEndTime.getTime() - user.testStartTime.getTime();
+        await user.save();
+
+        // --- ADD LOGGING AFTER SAVE ---
+        try {
+            await user.save();
+            console.log(`[Beacon] Successfully saved end time and duration (${user.testDurationMs}ms) for user ${userId}`); // <-- ADD THIS
+        } catch (saveError) {
+            console.error(`[Beacon] Error saving user after setting end time/duration for ${userId}:`, saveError); // <-- ADD THIS
+            // Can't send error response to beacon, but log it
+        }
+        // --- END LOGGING ---
+
+        // --- End same logic ---
+
+        console.log(`[Beacon] Successfully marked end time for user ${userId} at ${user.testEndTime}. Duration: ${user.testDurationMs}ms`);
+        res.status(204).send(); // Beacon expects success codes (2xx), 204 is appropriate
+
+    } catch (error) {
+        // Log errors, but beacon won't see the response
+        console.error(`[Beacon] Error marking test end for user ${userId}:`, error);
+        // Still send a success-like status if possible, otherwise let it fail
+        res.status(204).send(); // Or potentially 500, though client won't see it
     }
 });
 
