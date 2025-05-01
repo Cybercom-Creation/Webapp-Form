@@ -620,6 +620,30 @@ body {
 
   
 /* Instructions Popup Styling */
+
+/* Add this to Form.css or your relevant CSS file */
+.instruction-item {
+    display: flex; /* Align checkbox and label horizontally */
+    align-items: center; /* Align items to the top */
+    margin-bottom: 10px; /* Space between instruction items */
+  }
+  
+  .instruction-item input[type="checkbox"] {
+    margin-right: 8px; /* Space between checkbox and label */
+    /*margin-top: 2px;*/
+    flex-shrink: 0; /* Prevent checkbox from shrinking */
+  }
+  
+  .instruction-item label {
+    cursor: pointer; /* Indicate the label is clickable */
+    flex-grow: 1; /* Allow label to take remaining space */
+  }
+  
+  .agree-button:disabled {
+    background-color: #cccccc; /* Grey out button when disabled */
+    cursor: not-allowed; /* Change cursor */
+    opacity: 0.6;
+  }
 .instructions-list {
     margin-top: 10px;
     line-height: 1.6; /* Improve readability */
