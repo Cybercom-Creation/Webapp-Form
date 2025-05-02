@@ -63,6 +63,23 @@ const Form = () => {
     const lastNoiseViolationTimestampRef = useRef(null); // To check for consecutiveness
     // --- End Refs ---
 
+
+      // --- State for Instruction Checkboxes (Single Object) ---
+      const [instructionChecks, setInstructionChecks] = useState({
+        inst1: false,
+        inst2: false,
+        inst3: false,
+        inst4: false,
+        inst5: false,
+        inst6: false,
+        inst7: false,
+        inst8: false,
+        inst9: false,
+        inst10: false,
+        inst11: false,
+        inst12: false,
+    });
+
     // --- Use the MediaPipe Face Detection Hook ---
     const {
         detectorReady,
@@ -1297,6 +1314,17 @@ const Form = () => {
         !detectorReady; // Detector must be ready
 
 
+    // --- Calculate if all instruction checkboxes are checked from the state object ---
+    const allInstructionsChecked = Object.values(instructionChecks).every(isChecked => isChecked === true);
+
+
+    // --- Handler for Instruction Checkbox Change ---
+    const handleInstructionCheckChange = (event) => {
+        const { id, checked } = event.target;
+        setInstructionChecks(prevChecks => ({ ...prevChecks, [id]: checked }));
+    };
+
+
     // --- JSX Rendering ---
     return (
         <div className="form-container">
@@ -1304,7 +1332,7 @@ const Form = () => {
             {/* --- Initial Form OR Test Area --- */}
             {!showInstructions && !submitted ? ( // Show form if instructions aren't shown AND test hasn't started
                 <form className="form-card" onSubmit={handleSubmit}>
-                    <h2>Submit Your Details</h2>
+                    <h2>Your Details</h2>
                     {/* ... (Name, Email, Phone inputs - unchanged) ... */}
                      <div className="form-group">
                         <label htmlFor="name">Name:</label>
@@ -1491,7 +1519,7 @@ const Form = () => {
                         <div className="user-details-header">
                             {/* Optional: Icon */}
                             {/* <FaUserCircle className="user-icon" /> */}
-                            <h3>Candidate Details</h3>
+                            <h3>Your Details</h3>
                         </div>
                         <div className="user-details-body">
                             <div className="detail-item">
@@ -1527,14 +1555,14 @@ const Form = () => {
                     </div>
                     {/* --- END NEW: Email Reminder Message --- */}
 
-                         <div className="audio-visualization-container">
+                         {/* <div className="audio-visualization-container">
                                 <canvas
                                     ref={audioCanvasRef}
                                     width="180" // Adjust width as needed
                                     height="60" // Adjust height as needed
                                     className="audio-graph"
                                 ></canvas>
-                            </div>
+                            </div> */}
                             {/* --- END ADDED --- */}
                         <iframe
                             src="https://forms.gle/CRkBenKdg2v8BsjMA"
@@ -1560,21 +1588,71 @@ const Form = () => {
                 <div className="popup-overlay">
                     <div className="popup">
                         <h2>Instructions</h2>
+                        {/* --- Corrected Instruction List Structure & Bindings --- */}
                         <div className="instructions-list">
-                             <p>You will have <strong>{Math.floor(600 / 60)} minutes</strong> to complete the test.</p>
-                             <p>Ensure you complete the test within the time limit shown in the top-right corner.</p>
-                             <p>During the test, <strong>do not</strong> perform any of the following actions:</p>
-                             <ul>
-                                 <li>Switch to another application or program.</li>
-                                 <li>Switch to another browser tab or window.</li>
-                                 <li>Minimize the browser window.</li>
-                                 <li>Turn off your screen or let your computer go to sleep.</li>
-                                 <li>Interact with notifications (e.g., clicking on them).</li>
-                                 <li>Disconnect from the internet or lose network connectivity.</li>
-                                 <li>Close the browser or refresh the page.</li>
-                                 <li>Stop sharing your screen.</li>
-                                 <li>Obscure your face or allow others into the camera view.</li>
-                             </ul>
+                            {/* Instruction 1 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst1" checked={instructionChecks.inst1} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst1">You will have <strong>{Math.floor(600 / 60)} minutes</strong> to complete the test.</label>
+                            </div>
+                            {/* Instruction 2 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst2" checked={instructionChecks.inst2} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst2">Ensure you complete the test within the time limit shown in the top-right corner.</label>
+                            </div>
+                            {/* Instruction 3 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst3" checked={instructionChecks.inst3} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst3">During the test, <strong>do not</strong> switch to another application or program.</label>
+                            </div>
+                            {/* Instruction 4 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst4" checked={instructionChecks.inst4} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst4">Do not switch to another browser tab or window.</label>
+                            </div>
+                            {/* Instruction 5 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst5" checked={instructionChecks.inst5} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst5">Do not minimize the browser window.</label>
+                            </div>
+                            {/* Instruction 6 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst6" checked={instructionChecks.inst6} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst6">Do not turn off your screen or let your computer go to sleep.</label>
+                            </div>
+                            {/* Instruction 7 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst7" checked={instructionChecks.inst7} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst7">Do not interact with notifications (e.g., clicking on them).</label>
+                            </div>
+                            {/* Instruction 8 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst8" checked={instructionChecks.inst8} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst8">Do not disconnect from the internet or lose network connectivity.</label>
+                            </div>
+                            {/* Instruction 9 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst9" checked={instructionChecks.inst9} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst9">Do not close the browser or refresh the page.</label>
+                            </div>
+                            {/* Instruction 10 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst10" checked={instructionChecks.inst10} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst10">Do not stop sharing your screen.</label>
+                            </div>
+                            {/* Instruction 11 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst11" checked={instructionChecks.inst11} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst11">Do not obscure your face or allow others into the camera view.</label>
+                            </div>
+                            {/* Instruction 12 */}
+                            <div className="instruction-item">
+                                <input type="checkbox" id="inst12" checked={instructionChecks.inst12} onChange={handleInstructionCheckChange} />
+                                <label htmlFor="inst12">Understand that violations may lead to warnings or disqualification.</label>
+                            </div>
+
+                            <br /> {/* Spacing */}
+
                              <p>If you perform any of the above actions:</p>
                              <ul>
                                  <li>You will receive a warning.</li>
@@ -1582,9 +1660,13 @@ const Form = () => {
                              </ul>
                              <p>Click 'I Agree' below to start the test and share your screen.</p>
                          </div>
-                        <button className="agree-button" onClick={requestScreenCapture}>
-                            I Agree
-                        </button>
+                         <button
+                            className="agree-button"
+                            onClick={requestScreenCapture}
+                            disabled={!allInstructionsChecked} /* <<< This binding was already correct */
+                        >
+                             I Agree
+                             </button>
                     </div>
                 </div>
             )}
