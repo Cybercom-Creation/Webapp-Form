@@ -1388,48 +1388,82 @@ const Form = () => {
                 <form className="form-card" onSubmit={handleSubmit}>
                     <h2>Your Details</h2>
                     {/* ... (Name, Email, Phone inputs - unchanged) ... */}
-                     <div className="form-group">
-                        <label htmlFor="name">Name:</label>
-                        <input
-                            type="text" id="name" value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            onBlur={() => checkFieldExists('name', name, setNameError)}
-                            required aria-invalid={!!nameError} aria-describedby="name-error"
-                        />
-                       {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
-                        <p id="name-error" className={`error-message ${nameError ? 'visible' : ''}`}>
-                        {/* Display the error message text, or a non-breaking space to maintain height */}
-                        {nameError || '\u00A0'}
-                         </p>
-                    </div>
                     <div className="form-group">
-                        <label htmlFor="email">Email:</label>
+                    <div className="input-container">
                         <input
-                            type="email" id="email" value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            onBlur={() => checkFieldExists('email', email, setEmailError)}
-                            required aria-invalid={!!emailError} aria-describedby="email-error"
+                        type="text"
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onFocus={() => {
+                            // No specific action needed here for the visual effect
+                        }}
+                        onBlur={() => checkFieldExists('name', name, setNameError)}
+                        placeholder="Name" 
+                        required
+                        aria-invalid={!!nameError}
+                        aria-describedby="name-error"
                         />
-                      {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
-                    <p id="email-error" className={`error-message ${emailError ? 'visible' : ''}`}>
-                    {emailError || '\u00A0'}
+                        <label htmlFor="name">Name</label> {/* Label text remains the same */}
+                    </div>
+                    <p
+                        id="name-error"
+                        className={`error-message ${nameError ? 'visible' : ''}`}
+                    >
+                        {nameError || '\u00A0'}
+                    </p>
+                    </div>
+                    {/* Repeat this structure for email and phone */}
+                    <div className="form-group">
+                    <div className="input-container">
+                        <input
+                        type="email"
+                        id="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onFocus={() => {
+                            // No specific action needed here
+                        }}
+                        onBlur={() => checkFieldExists('email', email, setEmailError)}
+                        placeholder="Email" 
+                        required
+                        aria-invalid={!!emailError}
+                        aria-describedby="email-error"
+                        />
+                        <label htmlFor="email">Email</label>
+                    </div>
+                    <p
+                        id="email-error"
+                        className={`error-message ${emailError ? 'visible' : ''}`}
+                    >
+                        {emailError || '\u00A0'}
                     </p>
                     </div>
                     <div className="form-group">
-                        <label htmlFor="phone">Phone Number:</label>
+                    <div className="input-container">
                         <input
-                            type="tel" id="phone" value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
-                            required aria-invalid={!!phoneError} aria-describedby="phone-error"
+                        type="tel"
+                        id="phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        onFocus={() => {
+                            // No specific action needed here
+                        }}
+                        onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
+                        placeholder="Phone Number" 
+                        required
+                        aria-invalid={!!phoneError}
+                        aria-describedby="phone-error"
                         />
-                        {/* ALWAYS RENDER the <p>, control visibility with class and content with state */}
-                        <p id="phone-error" className={`error-message ${phoneError ? 'visible' : ''}`}>
-                        {phoneError || '\u00A0'}
-                        </p>
+                        <label htmlFor="phone">Phone Number</label>
                     </div>
-
-
+                    <p
+                        id="phone-error"
+                        className={`error-message ${phoneError ? 'visible' : ''}`}
+                    >
+                        {phoneError || '\u00A0'}
+                    </p>
+                    </div>
                     {/* --- Camera Section (Simplified) --- */}
                     <div className="form-group camera-section">
 
