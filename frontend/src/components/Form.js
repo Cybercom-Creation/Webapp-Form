@@ -373,11 +373,6 @@ const Form = () => {
         if (isCameraOn && cameraStream && videoElement) {
             console.log(`Effect 3 [stream]: Assigning stream ${cameraStream.id} and setting up listeners.`);
             videoElement.srcObject = cameraStream;
-            // Reset readiness flag *before* attaching listeners for the new stream
-            if (isVideoReady) {
-                console.log("Effect 3 [stream]: Resetting isVideoReady to FALSE before setup.");
-                setIsVideoReady(false);
-            }
 
             const handleCanPlay = () => {
                 if (!isActive) return;
@@ -394,8 +389,7 @@ const Form = () => {
                 }).catch(e =>{
                    if (!isActive) return;
                    console.error("Effect 3 [stream]: Play error after canplay:", e.name, e.message);
-                   setCameraError(`Video play error: ${e.message}`);
-                   setIsVideoReady(false);
+                   if (isVideoReady) setIsVideoReady(false);
                 });
            };
            const handleLoadedMetadata = () => {
@@ -412,7 +406,7 @@ const Form = () => {
                 if (!isActive) return;
                 console.error("Video Event: 'error'", e);
                 setCameraError(`Video element error: ${videoElement.error?.message || 'Unknown error'}`);
-                setIsVideoReady(false);
+                if (isVideoReady) setIsVideoReady(false);
             };
 
             videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -732,12 +726,12 @@ const Form = () => {
                 }
             } else { // Face condition is normal (1 face)
                 // If the warning is currently shown *specifically for a face violation*, hide it.
-                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                    console.log("Face condition corrected (1 face), hiding face-related warning.");
-                    setShowWarning(false);
-                    // Do NOT reset warningStartTime or currentWarningType here. The popup close handler does that.
-                    // If we reset them here, the close handler wouldn't know what violation was just cleared.
-                }
+                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                //     console.log("Face condition corrected (1 face), hiding face-related warning.");
+                //     setShowWarning(false);
+                //     // Do NOT reset warningStartTime or currentWarningType here. The popup close handler does that.
+                //     // If we reset them here, the close handler wouldn't know what violation was just cleared.
+                // }
                 // If the warning is shown for another reason (tab_switch, noise), leave it alone.
             }
  
