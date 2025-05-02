@@ -54,7 +54,7 @@ const Form = () => {
     // --- Configuration for Consecutive Noise Alert ---
     const REQUIRED_CONSECUTIVE_NOISE_COUNT = 4; // Trigger after 4 consecutive violations
     const NOISE_TIME_WINDOW_MS = 10000; // Within 10 seconds
-    const CONSECUTIVE_FRAME_TIME_MS = 3000; // Max time between frames to be considered consecutive (adjust if needed)
+    const NOISE_RESET_INACTIVITY_MS = 5000;
     // --- End Configuration ---
 
     // --- Refs to track consecutive noise ---
@@ -373,11 +373,6 @@ const Form = () => {
         if (isCameraOn && cameraStream && videoElement) {
             console.log(`Effect 3 [stream]: Assigning stream ${cameraStream.id} and setting up listeners.`);
             videoElement.srcObject = cameraStream;
-            // Reset readiness flag *before* attaching listeners for the new stream
-            if (isVideoReady) {
-                console.log("Effect 3 [stream]: Resetting isVideoReady to FALSE before setup.");
-                setIsVideoReady(false);
-            }
 
             const handleCanPlay = () => {
                 if (!isActive) return;
@@ -394,8 +389,7 @@ const Form = () => {
                 }).catch(e =>{
                    if (!isActive) return;
                    console.error("Effect 3 [stream]: Play error after canplay:", e.name, e.message);
-                   setCameraError(`Video play error: ${e.message}`);
-                   setIsVideoReady(false);
+                   if (isVideoReady) setIsVideoReady(false);
                 });
            };
            const handleLoadedMetadata = () => {
@@ -412,7 +406,7 @@ const Form = () => {
                 if (!isActive) return;
                 console.error("Video Event: 'error'", e);
                 setCameraError(`Video element error: ${videoElement.error?.message || 'Unknown error'}`);
-                setIsVideoReady(false);
+                if (isVideoReady) setIsVideoReady(false);
             };
 
             videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -652,52 +646,59 @@ const Form = () => {
         }
     }, []);
 
-    // --- Face Detection Logging/Warning Trigger (Unchanged Logic, but depends on state) ---
-    // ... (No changes needed here)
+     // ... (No changes needed here)
+    // --- Face Detection Logging/Warning Trigger (REFINED LOGIC) ---
     useEffect(() => {
-
+        const currentTime = Date.now();
+        const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod;
+ 
         // --- ADD LOGGING HERE ---
-        console.log('[Face Check Effect]', {
-            submitted,
-            userId: !!userId, // Log boolean for brevity
-            mediaStream: !!mediaStream,
-            isCameraOn,
-            isVideoReady,
-            isTimeOver,
-            isFaceDetectionGracePeriod,
+        console.log('[Face Check Effect START]', {
+            isActiveTestPhase,
             numberOfFacesDetected,
-            noFaceStartTime: noFaceStartTime !== null, // Log boolean
-            multipleFaceStartTime: multipleFaceStartTime !== null // Log boolean
+            currentWarningType, // Log the current warning type *before* this effect potentially changes it
+            showWarning,        // Log if warning is currently shown
+            noFaceStartTime: noFaceStartTime !== null,
+            multipleFaceStartTime: multipleFaceStartTime !== null,
+            isFaceDetectionGracePeriod,
         });
-
-        // Only run this logic during the active test phase (AFTER submission and screen share start)
-        if (submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod) { // Check for mediaStream too
-            const currentTime = Date.now();
-
-            // --- Handle NO FACE Detected ---
+ 
+        // --- Handle Active Test Phase ---
+        if (isActiveTestPhase) {
+            let newWarningType = null; // What the warning *should* be based on faces
+            let faceViolationActive = false;
+ 
+            // --- Determine current face violation state ---
             if (numberOfFacesDetected === 0) {
+                faceViolationActive = true;
+                newWarningType = 'no_face';
                 if (noFaceStartTime === null) {
-                    setNoFaceStartTime(currentTime);
-                    console.log("VIOLATION TRIGGER: No Face Detected");
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('no_face');
-                    setShowWarning(true);
-                    if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
+                    setNoFaceStartTime(currentTime); // Start timer for this specific violation
+                    console.log("VIOLATION TRIGGER: No Face Detected - Timer Started");
                 }
-            }
-            // --- Handle MULTIPLE FACES Detected ---
-            else if (numberOfFacesDetected > 1) {
+                // Clear the other face timer if it was running
+                if (multipleFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: Multiple Faces (transition to 0)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                    setMultipleFaceStartTime(null);
+                }
+            } else if (numberOfFacesDetected > 1) {
+                faceViolationActive = true;
+                newWarningType = 'multiple_face';
                 if (multipleFaceStartTime === null) {
-                    setMultipleFaceStartTime(currentTime);
-                    console.log("VIOLATION TRIGGER: Multiple Faces Detected");
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('multiple_face');
-                    setShowWarning(true);
-                    if (noFaceStartTime !== null) setNoFaceStartTime(null);
+                    setMultipleFaceStartTime(currentTime); // Start timer
+                    console.log("VIOLATION TRIGGER: Multiple Faces Detected - Timer Started");
                 }
-            }
-            // --- Handle EXACTLY ONE FACE Detected (Normal state - END of previous warning PERIOD) ---
-            else if (numberOfFacesDetected === 1) {
+                // Clear the other face timer if it was running
+                if (noFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: No Face (transition to >1)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                    setNoFaceStartTime(null);
+                }
+            } else { // numberOfFacesDetected === 1 (Normal)
+                faceViolationActive = false;
+                newWarningType = null; // No face-related warning needed
+                // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
                     console.log("LOG EVENT DURATION END: No Face (transition to 1)");
                     sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
@@ -708,31 +709,84 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
-                // Also clear warning popup if face becomes valid again
-                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                //     console.log("Face condition corrected, hiding warning.");
-                //     setShowWarning(false);
-                //     setWarningStartTime(null);
-                //     setCurrentWarningType(null);
-                // }
             }
+ 
+            // --- Update General Warning State ---
+            if (faceViolationActive) {
+                // If the warning is not already shown OR if it's shown but for a *different* reason, update it.
+                if (!showWarning || (currentWarningType !== 'no_face' && currentWarningType !== 'multiple_face')) {
+                    console.log(`Setting/Updating general warning for face violation: ${newWarningType}`);
+                    setWarningStartTime(currentTime); // Set/Update general warning start time
+                    setCurrentWarningType(newWarningType);
+                    setShowWarning(true);
+                }
+                // If the warning *is* already shown for the *correct* face violation type, do nothing to avoid loops.
+                else if (showWarning && currentWarningType === newWarningType) {
+                     console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
+                }
+            } else { // Face condition is normal (1 face)
+                // If the warning is currently shown *specifically for a face violation*, hide it.
+                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                //     console.log("Face condition corrected (1 face), hiding face-related warning.");
+                //     setShowWarning(false);
+                //     // Do NOT reset warningStartTime or currentWarningType here. The popup close handler does that.
+                //     // If we reset them here, the close handler wouldn't know what violation was just cleared.
+                // }
+                // If the warning is shown for another reason (tab_switch, noise), leave it alone.
+            }
+ 
         }
-        else if (isFaceDetectionGracePeriod) {
-            // Optional: Log that checks are skipped during grace period
-            console.log("[Face Detection Effect] Skipping checks during grace period.");
-       } 
+        // --- Handle Inactive Test Phase or Prerequisites Not Met ---
         else {
-            // Reset timers if test becomes inactive or prerequisites aren't met
-            if (noFaceStartTime !== null) setNoFaceStartTime(null);
-            if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
+            // Log and clear any active face violation timers if they haven't been cleared yet
+            if (noFaceStartTime !== null) {
+                console.log("LOG EVENT DURATION END: No Face (test inactive/prereq failed)");
+                // Avoid sending log if userId is missing (might happen during cleanup)
+                if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                setNoFaceStartTime(null);
+            }
+            if (multipleFaceStartTime !== null) {
+                console.log("LOG EVENT DURATION END: Multiple Faces (test inactive/prereq failed)");
+                 if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                setMultipleFaceStartTime(null);
+            }
+ 
+            // Hide the general warning *only if* it was specifically a face-related one
+            // and the test is now inactive. Don't hide warnings like 'tab_switch' just because the camera turned off.
+            // Check the specific reason for inactivity if needed, but for now, just check the warning type.
+            // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+            //      console.log("Test inactive/prereq failed, hiding face warning.");
+            //      setShowWarning(false);
+            //      // Reset general warning state *only when hiding due to inactivity*
+            //      // If hidden because face became 1, the close handler resets.
+            //      setWarningStartTime(null);
+            //      setCurrentWarningType(null);
+            // }
         }
+ 
     }, [
-        numberOfFacesDetected, submitted, userId, mediaStream, isCameraOn, isVideoReady, isTimeOver,
-        noFaceStartTime, multipleFaceStartTime, sendProctoringLog, showWarning, currentWarningType, // Added showWarning/currentWarningType
+        // Core dependencies that trigger re-evaluation
+        numberOfFacesDetected,
+        submitted,
+        userId,
+        mediaStream,
+        isCameraOn,
+        isVideoReady,
+        isTimeOver,
+        isFaceDetectionGracePeriod,
+        // Include state values read *within* the effect but which shouldn't trigger re-run on their own change
+        // (React handles this, but explicit inclusion can clarify intent)
+        noFaceStartTime,
+        multipleFaceStartTime,
+        showWarning, // Needed to decide *if* we need to update/hide
+        currentWarningType, // Needed to decide *if* we need to update/hide
+        // Include functions/setters called
+        sendProctoringLog,
+        setNoFaceStartTime,
+        setMultipleFaceStartTime,
         setWarningStartTime, setShowWarning, setCurrentWarningType,
-        isFaceDetectionGracePeriod
     ]);
-
+ 
 
     // --- Field Existence Check (Unchanged) ---
     // ... (No changes needed here)
@@ -1118,82 +1172,113 @@ const Form = () => {
             firstNoiseViolationInSequenceTimestampRef.current = null;
             lastNoiseViolationTimestampRef.current = null;
             // console.log("[Noise Effect] Monitoring stopped, resetting counters.");
+            // Ensure warning is hidden if monitoring stops
+            if (showWarning && currentWarningType === 'high_noise') {
+                 setShowWarning(false);
+                 setCurrentWarningType(null);
+                 setWarningStartTime(null);
+            }
             return;
         }
 
         const now = Date.now();
 
         if (isNoiseLevelHigh) {
+            // --- Noise is currently HIGH ---
             console.log(`[Noise Effect] High noise detected at ${now}`);
+            lastNoiseViolationTimestampRef.current = now; // Always update last violation time when high
 
             if (firstNoiseViolationInSequenceTimestampRef.current === null) {
                 // --- Case 1: This is the FIRST violation in a potential sequence ---
                 console.log("   Starting new noise sequence.");
                 firstNoiseViolationInSequenceTimestampRef.current = now;
-                lastNoiseViolationTimestampRef.current = now; // Record the time of this violation
                 consecutiveNoiseCountRef.current = 1;
                 console.log(`   [consecutiveNoiseCountRef] set to 1. First timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
 
             } else {
-                // --- Case 2: This is a SUBSEQUENT violation ---
+                // --- Case 2: This is a SUBSEQUENT violation in an existing sequence ---
                 const timeSinceFirst = now - firstNoiseViolationInSequenceTimestampRef.current;
                 console.log(`   Continuing sequence. Time since first: ${timeSinceFirst}ms (Window: ${NOISE_TIME_WINDOW_MS}ms)`);
 
-                // --- *** NEW CHECK: Has the time window expired? *** ---
+                // Check if the sequence's time window has expired
                 if (timeSinceFirst > NOISE_TIME_WINDOW_MS) {
                     // The sequence timed out before reaching the required count.
                     // Reset and start a NEW sequence with THIS violation.
                     console.log("   Time window expired before reaching count. Resetting and starting new sequence.");
                     firstNoiseViolationInSequenceTimestampRef.current = now;
-                    lastNoiseViolationTimestampRef.current = now;
                     consecutiveNoiseCountRef.current = 1;
                     console.log(`   [consecutiveNoiseCountRef] reset to 1. New first timestamp: ${firstNoiseViolationInSequenceTimestampRef.current}`);
                 } else {
-                    // --- Time window is still valid, proceed with incrementing ---
-                    consecutiveNoiseCountRef.current += 1;
-                    lastNoiseViolationTimestampRef.current = now; // Update the last violation time
-                    console.log(`   [consecutiveNoiseCountRef] incremented to ${consecutiveNoiseCountRef.current}. Last timestamp: ${lastNoiseViolationTimestampRef.current}`);
+                    // Time window is still valid. Increment count (only if it hasn't reached the threshold yet? No, let it increment)
+                    // We only increment if this isn't the *exact* same timestamp as the first to avoid double counting on rapid calls
+                    if (now > firstNoiseViolationInSequenceTimestampRef.current) {
+                         // Only increment if it's truly a subsequent event in time
+                         // Check if we are *just* hitting the threshold or already past it
+                         if (consecutiveNoiseCountRef.current < REQUIRED_CONSECUTIVE_NOISE_COUNT) {
+                            consecutiveNoiseCountRef.current += 1;
+                            console.log(`   [consecutiveNoiseCountRef] incremented to ${consecutiveNoiseCountRef.current}.`);
+                         } else {
+                            // Count is already at or above threshold, just log that noise continues
+                            console.log(`   [consecutiveNoiseCountRef] already at ${consecutiveNoiseCountRef.current} (>=${REQUIRED_CONSECUTIVE_NOISE_COUNT}). Noise continues.`);
+                         }
+                    }
 
-                    // --- Check if the threshold is met WITHIN the time window ---
+
+                    // Check if the threshold is met or exceeded WITHIN the time window
                     if (consecutiveNoiseCountRef.current >= REQUIRED_CONSECUTIVE_NOISE_COUNT) {
-                        // We have reached the required count within the allowed time window.
-                        console.warn(`   [Alert Triggered] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
+                        console.warn(`   [Alert Condition Met] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
 
                         // Show warning only if not already showing this specific warning
                         if (!showWarning || currentWarningType !== 'high_noise') {
+                            console.log("   Triggering 'high_noise' warning popup.");
                             setShowWarning(true);
                             setCurrentWarningType('high_noise');
-                            setWarningStartTime(now); // Timestamp when the threshold was met
+                            // Set warning start time only when it *first* triggers
+                            if (!warningStartTime) { // Or check if currentWarningType was different
+                                setWarningStartTime(now);
+                            }
                         }
-
-                        // --- Reset everything AFTER triggering the alert ---
-                        console.log("   Resetting count after alert.");
-                        consecutiveNoiseCountRef.current = 0;
-                        firstNoiseViolationInSequenceTimestampRef.current = null;
-                        lastNoiseViolationTimestampRef.current = null;
+                        // --- DO NOT RESET COUNTERS HERE ---
                     }
-                    // else: Threshold not met yet, but window is still valid. Keep monitoring.
                 }
             }
         } else {
-            // Optional: Log when noise level drops below threshold for debugging
+            // --- Noise is currently LOW ---
             // console.log(`[Noise Effect] Noise level normal at ${now}`);
 
-            // --- Decide if a drop in noise should reset the counter ---
-            // Current logic doesn't reset on noise drop, only on timeout or successful alert.
-            // This means a brief quiet period won't break the sequence unless the *next*
-            // high noise event falls outside the NOISE_TIME_WINDOW_MS from the *first* event.
-            // If you wanted *strictly* consecutive frames without interruption, you'd add:
-            // consecutiveNoiseCountRef.current = 0;
-            // firstNoiseViolationInSequenceTimestampRef.current = null;
-            // lastNoiseViolationTimestampRef.current = null;
+            // Check if a sequence was active and if enough time has passed since the LAST violation
+            if (lastNoiseViolationTimestampRef.current !== null) {
+                const timeSinceLastViolation = now - lastNoiseViolationTimestampRef.current;
+                // console.log(`   Time since last violation: ${timeSinceLastViolation}ms (Reset threshold: ${NOISE_RESET_INACTIVITY_MS}ms)`);
+
+                if (timeSinceLastViolation > NOISE_RESET_INACTIVITY_MS) {
+                    // --- Reset the sequence due to inactivity ---
+                    console.log(`   [Resetting Counters] Noise low for ${timeSinceLastViolation}ms (>${NOISE_RESET_INACTIVITY_MS}ms). Resetting sequence.`);
+                    consecutiveNoiseCountRef.current = 0;
+                    firstNoiseViolationInSequenceTimestampRef.current = null;
+                    lastNoiseViolationTimestampRef.current = null; // Clear last violation time too
+
+                    // --- Hide the warning IF it was specifically a high_noise warning ---
+                    // (The close button logic already handles preventing closure while noise is high)
+                    // This handles hiding it automatically if noise stays low long enough.
+                    if (showWarning && currentWarningType === 'high_noise') {
+                        console.log("Hiding 'high_noise' warning due to inactivity reset.");
+                        setShowWarning(false);
+                        setCurrentWarningType(null);
+                        setWarningStartTime(null);
+                    }
+                }
+                // else: Noise is low, but not for long enough to reset yet. Do nothing.
+            }
+            // else: Noise is low, and no sequence was active. Do nothing.
         }
 
     }, [
         isNoiseLevelHigh,
         isAudioMonitoringActive,
-        showWarning,
-        currentWarningType,
+        showWarning, // Need this to check if we need to show/hide
+        currentWarningType, // Need this to check if we need to show/hide
+        warningStartTime, // Need this for setting start time correctly
     ]);
         
 
