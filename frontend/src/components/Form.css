@@ -47,7 +47,7 @@ body {
 
 /* Form group styling */
 .form-group {
-    margin-bottom: 20px; /* Reduced space between form groups */
+    margin-bottom: 10px; /* Reduced space between form groups */
 }
 
 .form-group label {
@@ -59,6 +59,7 @@ body {
 
 .input-container {
   position: relative; /* Needed for absolute positioning of the label */
+  margin-bottom: -10px;
 }
 
 .input-container input {
@@ -79,7 +80,7 @@ body {
 
 .input-container label {
   position: absolute;
-  left: 12px;
+  left: 0px;
   top: 16px; /* Initially align with the input text */
   font-size: 16px;
   color: #aaa; /* Make the initial label color similar to a placeholder */
@@ -148,6 +149,7 @@ body {
     opacity: 0;                /* Hidden by default (transparent) */
     transition: opacity 0.3s ease-in-out; /* Transition only opacity */
     height: auto;              /* Allow height to grow for multi-line errors */
+    margin-left: 4px;
 }
 
 .error-message.visible {
