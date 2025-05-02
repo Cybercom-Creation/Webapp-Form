@@ -652,52 +652,59 @@ const Form = () => {
         }
     }, []);
 
-    // --- Face Detection Logging/Warning Trigger (Unchanged Logic, but depends on state) ---
-    // ... (No changes needed here)
+     // ... (No changes needed here)
+    // --- Face Detection Logging/Warning Trigger (REFINED LOGIC) ---
     useEffect(() => {
-
+        const currentTime = Date.now();
+        const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod;
+ 
         // --- ADD LOGGING HERE ---
-        console.log('[Face Check Effect]', {
-            submitted,
-            userId: !!userId, // Log boolean for brevity
-            mediaStream: !!mediaStream,
-            isCameraOn,
-            isVideoReady,
-            isTimeOver,
-            isFaceDetectionGracePeriod,
+        console.log('[Face Check Effect START]', {
+            isActiveTestPhase,
             numberOfFacesDetected,
-            noFaceStartTime: noFaceStartTime !== null, // Log boolean
-            multipleFaceStartTime: multipleFaceStartTime !== null // Log boolean
+            currentWarningType, // Log the current warning type *before* this effect potentially changes it
+            showWarning,        // Log if warning is currently shown
+            noFaceStartTime: noFaceStartTime !== null,
+            multipleFaceStartTime: multipleFaceStartTime !== null,
+            isFaceDetectionGracePeriod,
         });
-
-        // Only run this logic during the active test phase (AFTER submission and screen share start)
-        if (submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod) { // Check for mediaStream too
-            const currentTime = Date.now();
-
-            // --- Handle NO FACE Detected ---
+ 
+        // --- Handle Active Test Phase ---
+        if (isActiveTestPhase) {
+            let newWarningType = null; // What the warning *should* be based on faces
+            let faceViolationActive = false;
+ 
+            // --- Determine current face violation state ---
             if (numberOfFacesDetected === 0) {
+                faceViolationActive = true;
+                newWarningType = 'no_face';
                 if (noFaceStartTime === null) {
-                    setNoFaceStartTime(currentTime);
-                    console.log("VIOLATION TRIGGER: No Face Detected");
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('no_face');
-                    setShowWarning(true);
-                    if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
+                    setNoFaceStartTime(currentTime); // Start timer for this specific violation
+                    console.log("VIOLATION TRIGGER: No Face Detected - Timer Started");
                 }
-            }
-            // --- Handle MULTIPLE FACES Detected ---
-            else if (numberOfFacesDetected > 1) {
+                // Clear the other face timer if it was running
+                if (multipleFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: Multiple Faces (transition to 0)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                    setMultipleFaceStartTime(null);
+                }
+            } else if (numberOfFacesDetected > 1) {
+                faceViolationActive = true;
+                newWarningType = 'multiple_face';
                 if (multipleFaceStartTime === null) {
-                    setMultipleFaceStartTime(currentTime);
-                    console.log("VIOLATION TRIGGER: Multiple Faces Detected");
-                    setWarningStartTime(currentTime);
-                    setCurrentWarningType('multiple_face');
-                    setShowWarning(true);
-                    if (noFaceStartTime !== null) setNoFaceStartTime(null);
+                    setMultipleFaceStartTime(currentTime); // Start timer
+                    console.log("VIOLATION TRIGGER: Multiple Faces Detected - Timer Started");
                 }
-            }
-            // --- Handle EXACTLY ONE FACE Detected (Normal state - END of previous warning PERIOD) ---
-            else if (numberOfFacesDetected === 1) {
+                // Clear the other face timer if it was running
+                if (noFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: No Face (transition to >1)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                    setNoFaceStartTime(null);
+                }
+            } else { // numberOfFacesDetected === 1 (Normal)
+                faceViolationActive = false;
+                newWarningType = null; // No face-related warning needed
+                // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
                     console.log("LOG EVENT DURATION END: No Face (transition to 1)");
                     sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
@@ -708,31 +715,84 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
-                // Also clear warning popup if face becomes valid again
-                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                //     console.log("Face condition corrected, hiding warning.");
-                //     setShowWarning(false);
-                //     setWarningStartTime(null);
-                //     setCurrentWarningType(null);
-                // }
             }
+ 
+            // --- Update General Warning State ---
+            if (faceViolationActive) {
+                // If the warning is not already shown OR if it's shown but for a *different* reason, update it.
+                if (!showWarning || (currentWarningType !== 'no_face' && currentWarningType !== 'multiple_face')) {
+                    console.log(`Setting/Updating general warning for face violation: ${newWarningType}`);
+                    setWarningStartTime(currentTime); // Set/Update general warning start time
+                    setCurrentWarningType(newWarningType);
+                    setShowWarning(true);
+                }
+                // If the warning *is* already shown for the *correct* face violation type, do nothing to avoid loops.
+                else if (showWarning && currentWarningType === newWarningType) {
+                     console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
+                }
+            } else { // Face condition is normal (1 face)
+                // If the warning is currently shown *specifically for a face violation*, hide it.
+                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                    console.log("Face condition corrected (1 face), hiding face-related warning.");
+                    setShowWarning(false);
+                    // Do NOT reset warningStartTime or currentWarningType here. The popup close handler does that.
+                    // If we reset them here, the close handler wouldn't know what violation was just cleared.
+                }
+                // If the warning is shown for another reason (tab_switch, noise), leave it alone.
+            }
+ 
         }
-        else if (isFaceDetectionGracePeriod) {
-            // Optional: Log that checks are skipped during grace period
-            console.log("[Face Detection Effect] Skipping checks during grace period.");
-       } 
+        // --- Handle Inactive Test Phase or Prerequisites Not Met ---
         else {
-            // Reset timers if test becomes inactive or prerequisites aren't met
-            if (noFaceStartTime !== null) setNoFaceStartTime(null);
-            if (multipleFaceStartTime !== null) setMultipleFaceStartTime(null);
+            // Log and clear any active face violation timers if they haven't been cleared yet
+            if (noFaceStartTime !== null) {
+                console.log("LOG EVENT DURATION END: No Face (test inactive/prereq failed)");
+                // Avoid sending log if userId is missing (might happen during cleanup)
+                if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                setNoFaceStartTime(null);
+            }
+            if (multipleFaceStartTime !== null) {
+                console.log("LOG EVENT DURATION END: Multiple Faces (test inactive/prereq failed)");
+                 if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                setMultipleFaceStartTime(null);
+            }
+ 
+            // Hide the general warning *only if* it was specifically a face-related one
+            // and the test is now inactive. Don't hide warnings like 'tab_switch' just because the camera turned off.
+            // Check the specific reason for inactivity if needed, but for now, just check the warning type.
+            // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+            //      console.log("Test inactive/prereq failed, hiding face warning.");
+            //      setShowWarning(false);
+            //      // Reset general warning state *only when hiding due to inactivity*
+            //      // If hidden because face became 1, the close handler resets.
+            //      setWarningStartTime(null);
+            //      setCurrentWarningType(null);
+            // }
         }
+ 
     }, [
-        numberOfFacesDetected, submitted, userId, mediaStream, isCameraOn, isVideoReady, isTimeOver,
-        noFaceStartTime, multipleFaceStartTime, sendProctoringLog, showWarning, currentWarningType, // Added showWarning/currentWarningType
+        // Core dependencies that trigger re-evaluation
+        numberOfFacesDetected,
+        submitted,
+        userId,
+        mediaStream,
+        isCameraOn,
+        isVideoReady,
+        isTimeOver,
+        isFaceDetectionGracePeriod,
+        // Include state values read *within* the effect but which shouldn't trigger re-run on their own change
+        // (React handles this, but explicit inclusion can clarify intent)
+        noFaceStartTime,
+        multipleFaceStartTime,
+        showWarning, // Needed to decide *if* we need to update/hide
+        currentWarningType, // Needed to decide *if* we need to update/hide
+        // Include functions/setters called
+        sendProctoringLog,
+        setNoFaceStartTime,
+        setMultipleFaceStartTime,
         setWarningStartTime, setShowWarning, setCurrentWarningType,
-        isFaceDetectionGracePeriod
     ]);
-
+ 
 
     // --- Field Existence Check (Unchanged) ---
     // ... (No changes needed here)
