@@ -12,12 +12,10 @@ router.post('/submitted', async (req, res) => {
     // Use default values (like null) if a field might be missing
     const {
         timestamp = new Date().toISOString(), // Use received timestamp or fallback
-        respondentEmail = null,
         name = null // This should be the MongoDB _id from the form
     } = req.body;
 
     console.log(`Submission Timestamp: ${timestamp}`);
-    console.log(`Respondent Email: ${respondentEmail}`);
     console.log(`User ID (from form): ${name}`);
 
     // --- Backend logic to update user status ---
