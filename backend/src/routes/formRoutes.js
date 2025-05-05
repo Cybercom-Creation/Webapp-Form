@@ -13,25 +13,19 @@ router.post('/submitted', async (req, res) => {
     const {
         timestamp = new Date().toISOString(), // Use received timestamp or fallback
         respondentEmail = null,
-        userId = null // This should be the MongoDB _id from the form
+        name = null // This should be the MongoDB _id from the form
     } = req.body;
 
     console.log(`Submission Timestamp: ${timestamp}`);
     console.log(`Respondent Email: ${respondentEmail}`);
-    console.log(`User ID (from form): ${userId}`);
+    console.log(`User ID (from form): ${name}`);
 
     // --- Backend logic to update user status ---
-    if (userId) {
+    if (name) {
         try {
-            // Validate if userId looks like a MongoDB ObjectId before querying
-            if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
-                 console.warn(`Received userId "${userId}" is not a valid MongoDB ObjectId format.`);
-                 // Decide how to handle this - maybe still log, but don't query DB?
-                 // For now, we'll proceed, but Mongoose might throw a CastError later
-            }
-
+            
             // Find the user by the MongoDB _id passed via the pre-filled form link
-            const user = await User.findById(userId);
+            const user = await User.findOne({ name: name });
 
             if (user) {
                 // Check if the form hasn't already been marked as submitted
@@ -42,22 +36,16 @@ router.post('/submitted', async (req, res) => {
                     // user.formRespondentEmail = respondentEmail; // Add this field to schema if needed
 
                     await user.save();
-                    console.log(`Successfully marked form as submitted for user ID: ${userId}`);
+                    console.log(`Successfully marked form as submitted for user ID: ${name}`);
                 } else {
-                    console.log(`Form was already marked as submitted for user ID: ${userId}. Ignoring duplicate notification.`);
+                    console.log(`Form was already marked as submitted for user ID: ${name}. Ignoring duplicate notification.`);
                 }
             } else {
-                console.warn(`Form submission notification received, but User ID "${userId}" was not found in the database.`);
+                console.warn(`Form submission notification received, but User ID "${name}" was not found in the database.`);
                 // This could happen if the ID was incorrect or the user was deleted
             }
         } catch (error) {
-            console.error(`Error processing form submission notification for User ID "${userId}":`, error);
-            // If it's a CastError, the userId format was likely invalid
-            if (error.name === 'CastError') {
-                 console.error(`Invalid userId format received: ${userId}`);
-                 // Send a 400 Bad Request back to Apps Script? Might not be necessary.
-                 return res.status(400).json({ message: `Invalid userId format: ${userId}` });
-            }
+            console.error(`Error processing form submission notification for Username "${name}":`, error);
             // For other errors, send a generic server error
             // Note: Google Apps Script might not do much with this error response, but it's good practice
             return res.status(500).json({ message: 'Internal server error processing form submission.' });
