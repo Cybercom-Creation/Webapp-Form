@@ -36,6 +36,7 @@ app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 app.use('/api/users', require('./routes/userRoutes')); // Example path
 app.use('/api/proctoring-logs', require('./routes/logRoutes')); // Example path
 app.use('/api/screenshots', require('./routes/screenshotRoutes')); // Example path
+app.use('/api/form', require('./routes/formRoutes'));
 
 // --- Basic Error Handling (Example) ---
 app.use((err, req, res, next) => {
