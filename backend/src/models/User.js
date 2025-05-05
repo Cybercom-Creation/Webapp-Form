@@ -35,6 +35,12 @@ const UserSchema = new mongoose.Schema({
     testEndTime: { type: Date },   // For Feature 3
     testDurationMs: { type: Number }, // For Feature 3 (Optional, can be calculated)
     // --- END NEW FIELDS ---
+     // --- New fields for Google Form Submission ---
+    formSubmitted: {
+        type: Boolean,
+        default: false
+    },
+    formSubmissionTimestamp: { type: Date },
     createdAt: {
         type: Date,
         default: Date.now,
