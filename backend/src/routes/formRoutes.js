@@ -12,18 +12,18 @@ router.post('/submitted', async (req, res) => {
     // Use default values (like null) if a field might be missing
     const {
         timestamp = new Date().toISOString(), // Use received timestamp or fallback
-        name = null // This should be the MongoDB _id from the form
+        email = null // This should be the MongoDB _id from the form
     } = req.body;
 
     console.log(`Submission Timestamp: ${timestamp}`);
-    console.log(`User ID (from form): ${name}`);
+    console.log(`User ID (from form): ${email}`);
 
     // --- Backend logic to update user status ---
-    if (name) {
+    if (email) {
         try {
             
             // Find the user by the MongoDB _id passed via the pre-filled form link
-            const user = await User.findOne({ name: name });
+            const user = await User.findOne({ email: email });
 
             if (user) {
                 // Check if the form hasn't already been marked as submitted
@@ -34,16 +34,16 @@ router.post('/submitted', async (req, res) => {
                     // user.formRespondentEmail = respondentEmail; // Add this field to schema if needed
 
                     await user.save();
-                    console.log(`Successfully marked form as submitted for user ID: ${name}`);
+                    console.log(`Successfully marked form as submitted for user ID: ${email}`);
                 } else {
-                    console.log(`Form was already marked as submitted for user ID: ${name}. Ignoring duplicate notification.`);
+                    console.log(`Form was already marked as submitted for user ID: ${email}. Ignoring duplicate notification.`);
                 }
             } else {
-                console.warn(`Form submission notification received, but User ID "${name}" was not found in the database.`);
+                console.warn(`Form submission notification received, but User ID "${email}" was not found in the database.`);
                 // This could happen if the ID was incorrect or the user was deleted
             }
         } catch (error) {
-            console.error(`Error processing form submission notification for Username "${name}":`, error);
+            console.error(`Error processing form submission notification for Username "${email}":`, error);
             // For other errors, send a generic server error
             // Note: Google Apps Script might not do much with this error response, but it's good practice
             return res.status(500).json({ message: 'Internal server error processing form submission.' });
