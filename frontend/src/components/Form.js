@@ -45,6 +45,7 @@ const Form = () => {
     // --- ADDED: State for face detection event timing ---
     const [noFaceStartTime, setNoFaceStartTime] = useState(null);
     const [multipleFaceStartTime, setMultipleFaceStartTime] = useState(null);
+    const [lookingAwayStartTime, setLookingAwayStartTime] = useState(null); // <-- NEW: Timer for looking away
     // --- END ADDED ---
 
     // --- ADDED: State to track the specific type of the current warning ---
@@ -86,6 +87,7 @@ const Form = () => {
         detectionStatus,
         faceDetectedBox,
         getLatestDetectedBox,
+        isLookingAway, // <-- NEW: Get head pose status from hook
         numberOfFacesDetected
     } = useMediaPipeFaceDetection(videoRef, isCameraOn, isVideoReady); // Detect when camera should be active
 
@@ -558,6 +560,12 @@ const Form = () => {
             return;
         }
 
+        // --- ADDED: Check if user is looking away ---
+        if (isLookingAway) {
+            setError('Please look straight into the screen to submit.');
+            return;
+        }
+
         // 3. Capture the face photo NOW
         console.log("handleSubmit: Attempting to capture face photo...");
         const captureResult = captureCurrentFaceBase64();
@@ -657,8 +665,10 @@ const Form = () => {
             isActiveTestPhase,
             numberOfFacesDetected,
             currentWarningType, // Log the current warning type *before* this effect potentially changes it
+            isLookingAway,      // <-- Log the value received from the hook
             showWarning,        // Log if warning is currently shown
             noFaceStartTime: noFaceStartTime !== null,
+            lookingAwayStartTime: lookingAwayStartTime !== null, // <-- Log new timer
             multipleFaceStartTime: multipleFaceStartTime !== null,
             isFaceDetectionGracePeriod,
         });
@@ -682,6 +692,11 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
+                if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
+                    console.log("LOG EVENT DURATION END: Looking Away (transition to 0)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+                    setLookingAwayStartTime(null);
+                }
             } else if (numberOfFacesDetected > 1) {
                 faceViolationActive = true;
                 newWarningType = 'multiple_face';
@@ -695,9 +710,31 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
                     setNoFaceStartTime(null);
                 }
-            } else { // numberOfFacesDetected === 1 (Normal)
-                faceViolationActive = false;
-                newWarningType = null; // No face-related warning needed
+                if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
+                    console.log("LOG EVENT DURATION END: Looking Away (transition to >1)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+                    setLookingAwayStartTime(null);
+                }
+            } else if (isLookingAway) { // <-- NEW: Check for looking away (only if 1 face is detected)
+                console.log("[Face Check Effect] Condition MET: isLookingAway is true"); // DEBUG
+                faceViolationActive = true;
+                newWarningType = 'looking_away';
+                if (lookingAwayStartTime === null) {
+                    setLookingAwayStartTime(currentTime); // Start timer
+                    console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
+                }
+                // Clear other face timers if they were running
+                if (noFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                    setNoFaceStartTime(null);
+                }
+                if (multipleFaceStartTime !== null) {
+                    console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                    setMultipleFaceStartTime(null);
+                }
+            } else { // numberOfFacesDetected === 1 AND not looking away (Normal)
                 // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
                     console.log("LOG EVENT DURATION END: No Face (transition to 1)");
@@ -709,12 +746,20 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
+                if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
+                    console.log("LOG EVENT DURATION END: Looking Away (transition to 1, looking forward)");
+                    sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+                    setLookingAwayStartTime(null);
+                }
+                // Only reset general warning if it was a face-related one
+                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                    faceViolationActive = false; // Mark as resolved
+                    newWarningType = null; // No face warning needed
+                }
             }
- 
             // --- Update General Warning State ---
             if (faceViolationActive) {
-                // If the warning is not already shown OR if it's shown but for a *different* reason, update it.
-                if (!showWarning || (currentWarningType !== 'no_face' && currentWarningType !== 'multiple_face')) {
+                if (!showWarning || (currentWarningType !== newWarningType)) { // Show if not shown, or if type changes
                     console.log(`Setting/Updating general warning for face violation: ${newWarningType}`);
                     setWarningStartTime(currentTime); // Set/Update general warning start time
                     setCurrentWarningType(newWarningType);
@@ -725,14 +770,15 @@ const Form = () => {
                      console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
                 }
             } else { // Face condition is normal (1 face)
-                // If the warning is currently shown *specifically for a face violation*, hide it.
-                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                //     console.log("Face condition corrected (1 face), hiding face-related warning.");
-                //     setShowWarning(false);
-                //     // Do NOT reset warningStartTime or currentWarningType here. The popup close handler does that.
-                //     // If we reset them here, the close handler wouldn't know what violation was just cleared.
-                // }
-                // If the warning is shown for another reason (tab_switch, noise), leave it alone.
+                // If the warning *was* for a face violation that is now resolved, hide it.
+                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face' )) {
+                    console.log(`Face condition corrected (${currentWarningType} resolved), hiding face-related warning.`);
+                    setShowWarning(false);
+                    // Reset general warning state *only when hiding due to correction*
+                    // The close handler won't run if it auto-hides.
+                    setWarningStartTime(null);
+                    setCurrentWarningType(null);
+                }
             }
  
         }
@@ -750,18 +796,12 @@ const Form = () => {
                  if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                 setMultipleFaceStartTime(null);
             }
+            if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
+                console.log("LOG EVENT DURATION END: Looking Away (test inactive/prereq failed)");
+                if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+                setLookingAwayStartTime(null);
+            }
  
-            // Hide the general warning *only if* it was specifically a face-related one
-            // and the test is now inactive. Don't hide warnings like 'tab_switch' just because the camera turned off.
-            // Check the specific reason for inactivity if needed, but for now, just check the warning type.
-            // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-            //      console.log("Test inactive/prereq failed, hiding face warning.");
-            //      setShowWarning(false);
-            //      // Reset general warning state *only when hiding due to inactivity*
-            //      // If hidden because face became 1, the close handler resets.
-            //      setWarningStartTime(null);
-            //      setCurrentWarningType(null);
-            // }
         }
  
     }, [
@@ -778,6 +818,8 @@ const Form = () => {
         // (React handles this, but explicit inclusion can clarify intent)
         noFaceStartTime,
         multipleFaceStartTime,
+        lookingAwayStartTime, // <-- Include new timer state
+        isLookingAway, // <-- Include pose status
         showWarning, // Needed to decide *if* we need to update/hide
         currentWarningType, // Needed to decide *if* we need to update/hide
         // Include functions/setters called
@@ -785,6 +827,7 @@ const Form = () => {
         setNoFaceStartTime,
         setMultipleFaceStartTime,
         setWarningStartTime, setShowWarning, setCurrentWarningType,
+        setLookingAwayStartTime, // <-- Include new setter
     ]);
  
 
@@ -1365,6 +1408,7 @@ const Form = () => {
         !phone || !!phoneError ||
         !isCameraOn || !isVideoReady || // Camera must be fully ready
         numberOfFacesDetected !== 1 || // Exactly one face must be detected
+        isLookingAway || // <-- ADDED: User must be looking straight
         !detectorReady; // Detector must be ready
 
 
@@ -1475,41 +1519,41 @@ const Form = () => {
                     <p className={`error-message ${cameraError ? 'visible' : ''}`}>
                     {cameraError || '\u00A0'}
                     </p>
-                        {/* Detection Status & Warnings */}
-                        
-                        {/* {isCameraOn && isVideoReady && numberOfFacesDetected > 1 && (
-                            <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
-                                Warning: Multiple faces detected.
-                            </p>
-                        )}
-                         {isCameraOn && isVideoReady && numberOfFacesDetected === 0 && (
-                            <p className="error-message visible multiple-faces-warning" style={{ color: 'orange', fontWeight: 'bold' }}>
-                                Warning: No face detected.
-                            </p>
-                        )} */}
+                       
 
-                    {/* --- MODIFIED: Face Detection Warnings --- */}
-    {/* Warning for NO face detected */}
-    <p
-        className={`error-message ${
-            isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''
-        }`}
-        // Apply style only when visible to avoid applying orange color to the non-breaking space
-        style={
-            isCameraOn && isVideoReady && numberOfFacesDetected !== 1
-                ? { color: 'orange', fontWeight: 'bold' }
-                : {} // Empty style object when not visible
-        }
-    >
-        {/* Determine the message content */}
-        {isCameraOn && isVideoReady
-            ? numberOfFacesDetected === 0
-                ? 'Warning: No face detected.' // Message for 0 faces
-                : numberOfFacesDetected > 1
-                ? 'Warning: Multiple faces detected.' // Message for >1 faces
-                : '\u00A0' // Non-breaking space when 1 face (normal)
-            : '\u00A0' // Non-breaking space if camera isn't ready
-        }
+   
+                        {/* --- Face Count Warning --- */}
+                        <p
+                        className={`error-message ${
+                            isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''
+                        }`}
+                        style={
+                            isCameraOn && isVideoReady && numberOfFacesDetected !== 1
+                                ? { color: 'orange', fontWeight: 'bold' }
+                                : {}
+                        }
+                    >
+                        {/* Show message only if count is not 1 */}
+                        {isCameraOn && isVideoReady && numberOfFacesDetected !== 1
+                            ? numberOfFacesDetected === 0
+                                ? 'Warning: No face detected.'
+                                : 'Warning: Multiple faces detected.'
+                            : '\u00A0' /* Keep space otherwise */
+                        }
+                    </p>
+
+                    {/* --- Looking Away Warning --- */}
+                    <p
+                        className={`error-message ${
+                            isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'visible' : ''
+                        }`}
+                        style={
+                            isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway
+                                ? { color: 'orange', fontWeight: 'bold' }
+                                : {}
+                        }
+                    >                    
+       {isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'Warning: Look into the screen.' : '\u00A0'}
     </p>
     {/* --- END MODIFICATION --- */}                    
 
@@ -1566,6 +1610,8 @@ const Form = () => {
                                 ?  'Fill Details Correctly' // Changed for clarity
                                 : numberOfFacesDetected !== 1
                                 ? 'Align Face (1 needed)'
+                                : isLookingAway // <-- ADDED: Check for looking away
+                                ? 'Look Straight'
                                 : 'Check Conditions' // Fallback disabled text
                             : 'Submit Details'}
                     </button>
@@ -1795,6 +1841,7 @@ const Form = () => {
                             currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
                             currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
                             currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
+                            currentWarningType === 'looking_away' ? 'look straight at the screen' : // <-- ADD THIS CASE
                             currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : // <-- ADD THIS CASE
                             'violate the test rules'}
                             {' '}again.
@@ -1825,14 +1872,20 @@ const Form = () => {
                                      if (numberOfFacesDetected > 1) { // Multiple faces violation still active
                                          allowClose = false;
                                          blockReason = 'Please ensure only one face is visible to close this warning.';
-
                                          console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
                                      }
                                  }
                                  else if (currentWarningType === 'high_noise') {
                                      if (isNoiseLevelHigh) { // High noise violation still active
                                          allowClose = false;
-                                         blockReason = 'Please ensure a quiet environment to close this warning.';
+                                        blockReason = 'Please ensure a quiet environment to close this warning.';
+                                        console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                    }
+                                } else if (currentWarningType === 'looking_away') { // <-- NEW CHECK
+                                    console.log(`[Close Button Check] Checking 'looking_away'. Current isLookingAway state: ${isLookingAway}`); // DEBUG
+                                    if (isLookingAway) { // Looking away violation still active
+                                        allowClose = false;
+                                         blockReason = 'Please ensure your face is looking at the screen to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
                                  }
@@ -1879,6 +1932,10 @@ const Form = () => {
                                              case 'multiple_face':
                                                  triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
+                                                break;
+                                            case 'looking_away': // <-- NEW CASE
+                                                triggerEventToLog = 'looking_away'; // Log acknowledgement when resolved and closed
+                                                shouldLogPopupClose = true;
                                                  break;
                                              case 'incorrect_screen_share':
                                                  triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed

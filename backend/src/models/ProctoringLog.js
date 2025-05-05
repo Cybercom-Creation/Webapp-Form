@@ -14,6 +14,7 @@ const ProctoringLogSchema = new mongoose.Schema({
         enum: [ // Define allowed event types
             'no_face',
             'multiple_face',
+            'looking_away',
             'tab_switch',
             'screenshare_stop',
             'high_noise',

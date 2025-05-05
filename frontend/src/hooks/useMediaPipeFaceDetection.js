@@ -1,26 +1,32 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+// import { FaceMesh } from '@mediapipe/face_mesh'; // <-- REMOVE THIS IMPORT
 
 // --- Configuration ---
-const DETECTION_INTERVAL_MS = 500; // How often to run detection while camera is on
+const DETECTION_INTERVAL_MS = 500; // How often to run detection
+const YAW_THRESHOLD = 0.3; // Sensitivity for looking away (0.3-0.5 is a reasonable range to start tuning)
+const PITCH_THRESHOLD = 0.25; // Sensitivity for looking up/down (0.1-0.2 is a reasonable range to start tuning)
+// Lower value = more sensitive (triggers on smaller head turns)
+// Higher value = less sensitive (requires larger head turns)
 
 export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady) => {
     const [detectorReady, setDetectorReady] = useState(false);
     const [detectionStatus, setDetectionStatus] = useState('Initializing detector...');
+    const [isLookingAway, setIsLookingAway] = useState(false); // <-- NEW: State for head pose
     const [faceDetectedBox, setFaceDetectedBox] = useState(null);
     const [numberOfFaces, setNumberOfFaces] = useState(0);
     const detectorRef = useRef(null);
     const detectionIntervalRef = useRef(null);
     const resultsListenerAdded = useRef(false);
+    const videoDimensionsRef = useRef({ width: 0, height: 0 }); // To store video dimensions
 
-    // --- Initialize TFJS Backend and Medi
-    // aPipe Detector ---
+    // --- Initialize MediaPipe FaceMesh ---
     useEffect(() => {
         const initialize = async () => {
-            setDetectionStatus('Checking for MediaPipe/TFJS...');
-            const mpFaceDetection = window.FaceDetection;
-            const tf = window.tf;
+            setDetectionStatus('Checking for MediaPipe FaceMesh...');
+            // const mpFaceDetection = window.FaceDetection; // No longer needed
+            // const tf = window.tf; // No longer needed for FaceMesh directly
 
-            if (!mpFaceDetection || !tf || !tf.setBackend) {
+            /* // TFJS backend setup is not directly required by FaceMesh like it was for FaceDetection
                  console.error("MediaPipe FaceDetection or TensorFlow.js not found on window object.");
                  setDetectionStatus('Error: Required libraries not loaded.');
                  setDetectorReady(false);
@@ -32,59 +38,168 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
                 await tf.setBackend('webgl');
                 await tf.ready();
                 console.log('useMediaPipeFaceDetection: TFJS WebGL backend ready.');
+            */
 
-                setDetectionStatus('Loading MediaPipe Face Detector model...');
-                const detector = new mpFaceDetection({locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+            try {
+                setDetectionStatus('Loading MediaPipe Face Mesh model...');
+
+                // --- Access FaceMesh from window object ---
+                const FaceMesh = window.FaceMesh;
+                if (!FaceMesh) {
+                    throw new Error("FaceMesh not found on window object. Ensure MediaPipe scripts are loaded.");
+                }
+                // --- End Access ---
+
+                // Use FaceMesh constructor directly
+                const faceMeshInstance = new FaceMesh({locateFile: (file) => {
+                    // Ensure you have @mediapipe/face_mesh installed or use CDN
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
                 }});
 
                 const handleResults = (results) => {
                     const videoElement = videoRef.current;
-                    const detectedFacesCount = results.detections ? results.detections.length : 0;
+                    // FaceMesh returns multiFaceLandmarks array
+                    const detectedFacesCount = results.multiFaceLandmarks ? results.multiFaceLandmarks.length : 0;
+                    // console.log(`[handleResults] detectedFacesCount: ${detectedFacesCount}`);
 
                     // Update face count state FIRST
                     setNumberOfFaces(detectedFacesCount);
 
+                    let lookingAway = false; // Default to not looking away
+                    let poseReason = ''; // To store why lookingAway is true (yaw or pitch)
+                    let calculatedBox = null; // To store the calculated bounding box
+
                     // Then update status and box based on the count
                     if (detectedFacesCount === 0) {
                         setDetectionStatus('No face detected. Please position your face.');
-                        setFaceDetectedBox(null);
                     } else if (detectedFacesCount === 1) {
                         setDetectionStatus('Face detected. Ready to capture.');
-                        if (videoElement && videoElement.videoWidth > 0) {
-                             const box = results.detections[0].boundingBox;
-                             const xMin = box.xCenter - box.width / 2;
-                             const yMin = box.yCenter - box.height / 2;
-                             const pixelBox = {
-                                 x: xMin * videoElement.videoWidth,
-                                 y: yMin * videoElement.videoHeight,
-                                 width: box.width * videoElement.videoWidth,
-                                 height: box.height * videoElement.videoHeight,
-                             };
-                             setFaceDetectedBox(pixelBox);
+                        const landmarks = results.multiFaceLandmarks[0]; // Get landmarks for the first face
+
+                        if (videoElement && videoDimensionsRef.current.width > 0 && landmarks) {
+                            // console.log("[handleResults] Video element ready & landmarks found.");
+
+                            // --- Head Pose Estimation (Yaw) ---
+                            // Use FaceMesh landmark indices:
+                            // Nose Tip: 1
+                            // Left Eye (inner corner): 133
+                            // Right Eye (inner corner): 362
+                            // Forehead Top: 10
+                            // Chin Bottom: 152
+                            // Between Eyes (approx): 6
+                            // (Check MediaPipe docs for exact landmark map if needed)
+                            if (landmarks.length > 362) { // Ensure highest index needed exists
+                                const noseTip = landmarks[1];
+                                const leftEyeInner = landmarks[133];
+                                const rightEyeInner = landmarks[362];
+                                const foreheadTop = landmarks[10];
+                                const chinBottom = landmarks[152];
+                                const betweenEyes = landmarks[6]; // Approx center between eyes
+
+                                // Calculate horizontal distance between eyes (reference width)
+                                // Use inner corners for better stability
+                                const eyeWidth = Math.abs(rightEyeInner.x - leftEyeInner.x);
+                                // console.log(`[Pose] eyeWidth: ${eyeWidth.toFixed(4)}`); // DEBUG
+
+                                if (eyeWidth > 0) { // Avoid division by zero
+                                    // Calculate horizontal midpoint between eyes
+                                    const eyeMidX = (rightEyeInner.x + leftEyeInner.x) / 2;
+
+                                    // Calculate deviation of nose tip from eye midpoint, relative to eye width
+                                    const relativeYawDeviation = (noseTip.x - eyeMidX) / eyeWidth;
+                                    console.log(`[Pose Yaw] Dev: ${relativeYawDeviation.toFixed(4)}`); // DEBUG
+
+                                    // Check if absolute deviation exceeds threshold
+                                    const isYawViolation = Math.abs(relativeYawDeviation) > YAW_THRESHOLD;
+                                    // console.log(`[Pose Yaw] Violation: ${isYawViolation}`); // DEBUG
+                                    if (isYawViolation) {
+                                        lookingAway = true;
+                                        poseReason = 'yaw';
+                                    }
+                                }
+
+                                // --- Pitch Calculation ---
+                                const faceHeight = Math.abs(foreheadTop.y - chinBottom.y);
+                                // console.log(`[Pose Pitch] faceHeight: ${faceHeight.toFixed(4)}`); // DEBUG
+
+                                if (faceHeight > 0) {
+                                    // Calculate vertical distance between 'between eyes' and nose tip, relative to face height
+                                    const eyeNoseDistY = noseTip.y - betweenEyes.y;
+                                    const relativePitchDeviation = eyeNoseDistY / faceHeight;
+                                    console.log(`[Pose Pitch] Dev: ${relativePitchDeviation.toFixed(4)}`); // DEBUG
+
+                                    const isPitchViolation = Math.abs(relativePitchDeviation) > PITCH_THRESHOLD;
+                                    // console.log(`[Pose Pitch] Violation: ${isPitchViolation}`); // DEBUG
+
+                                    if (isPitchViolation && !lookingAway) { // Only set if yaw wasn't already true
+                                        lookingAway = true;
+                                        poseReason = 'pitch';
+                                    }
+                                }
+
+                                // --- Update Status based on combined pose ---
+                                    if (lookingAway) {
+                                        console.log(`[Pose] Status Update: Looking Away (${poseReason})`); // DEBUG
+                                        setDetectionStatus('Please look at the screen.');
+                                    } // else keep 'Face detected' status
+                                // <-- REMOVE EXTRA BRACE HERE
+                            } else {
+                                console.warn("[Pose Check] Not enough landmarks detected for pose estimation.");
+                            } // End landmark check
+                            // --- End Head Pose Estimation ---
+
+                            // --- Calculate Bounding Box from Landmarks ---
+                            // (FaceMesh doesn't provide a direct boundingBox like FaceDetection)
+                            let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+                            for (const landmark of landmarks) {
+                                minX = Math.min(minX, landmark.x);
+                                minY = Math.min(minY, landmark.y);
+                                maxX = Math.max(maxX, landmark.x);
+                                maxY = Math.max(maxY, landmark.y);
+                            }
+                            const width = maxX - minX;
+                            const height = maxY - minY;
+
+                            // Convert normalized coordinates to pixel values
+                            calculatedBox = {
+                                x: minX * videoDimensionsRef.current.width,
+                                y: minY * videoDimensionsRef.current.height,
+                                width: width * videoDimensionsRef.current.width,
+                                height: height * videoDimensionsRef.current.height,
+                            };
+                            // --- End Bounding Box Calculation ---
+
                         } else {
-                             setFaceDetectedBox(null); // Video not ready
+                             console.log("[handleResults] Video element NOT ready or landmarks missing. Skipping processing.");
                         }
                     } else { // More than 1 face
                         setDetectionStatus('Multiple faces detected! Please ensure only one face is visible.');
-                        setFaceDetectedBox(null);
                     }
+
+                    // Update looking away state
+                    console.log(`[Pose] Setting isLookingAway state to: ${lookingAway}`); // DEBUG
+                    setIsLookingAway(lookingAway);
+                    // Update face box state (will be null if no face or multiple faces)
+                    setFaceDetectedBox(calculatedBox);
                 };
 
-                detector.onResults(handleResults);
+                faceMeshInstance.onResults(handleResults); // Use the instance variable
                 resultsListenerAdded.current = true;
 
-                detector.setOptions({
-                    model: 'short',
+                // Set FaceMesh options
+                faceMeshInstance.setOptions({ // Use the instance variable
+                    maxNumFaces: 5, // <-- INCREASE THIS VALUE to detect multiple faces (e.g., 5)
+                    refineLandmarks: true, // Get more accurate landmarks
+                    // staticImageMode: false, // Ensure it's set for video streams
                     minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
                 });
-                await detector.initialize();
+                await faceMeshInstance.initialize(); // <-- FIX: Use faceMeshInstance variable
 
-                detectorRef.current = detector;
                 setDetectorReady(true);
                 setDetectionStatus('Detector ready.');
                 console.log('useMediaPipeFaceDetection: MediaPipe Face Detector ready.');
-
+                detectorRef.current = faceMeshInstance; // Store the correct instance in the ref
             } catch (err) {
                 console.error('useMediaPipeFaceDetection: Error during detector initialization:', err);
                 setDetectionStatus(`Error initializing detector: ${err.message}`);
@@ -107,6 +222,7 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
             }
             setDetectorReady(false);
             setNumberOfFaces(0);
+            setIsLookingAway(false); // Reset pose state
             setFaceDetectedBox(null);
             setDetectionStatus('Detector closed.');
         };
@@ -120,7 +236,7 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
         const detector = detectorRef.current;
         let videoStillNotReady = false; // Flag
 
-        // --- Core Checks ---
+        // --- Core Checks (Keep these) ---
         if (!detectorReady) { console.warn("[sendFrame] Exit: detector not ready"); return; }
         if (!detector) { console.warn("[sendFrame] Exit: detector ref null"); return; }
         if (!resultsListenerAdded.current) { console.warn("[sendFrame] Exit: results listener not added"); return; }
@@ -128,16 +244,21 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
         if (videoElement.paused) { console.warn("[sendFrame] Exit: video paused"); return; }
         if (videoElement.ended) { console.warn("[sendFrame] Exit: video ended"); return; }
 
-        // --- Video Readiness Checks ---
+        // --- Video Readiness Checks & Dimension Update ---
         if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA
             console.warn(`[sendFrame] Video not ready: readyState is ${videoElement.readyState} (< 3).`);
             videoStillNotReady = true;
         }
-        if (videoElement.videoWidth === 0) {
+        // Check and store video dimensions if they are valid and changed
+        if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            if (videoDimensionsRef.current.width !== videoElement.videoWidth || videoDimensionsRef.current.height !== videoElement.videoHeight) {
+                videoDimensionsRef.current = { width: videoElement.videoWidth, height: videoElement.videoHeight };
+                console.log(`[sendFrame] Updated video dimensions: ${videoDimensionsRef.current.width}x${videoDimensionsRef.current.height}`);
+            }
+        } else {
             console.warn("[sendFrame] Video not ready: videoWidth is 0.");
             videoStillNotReady = true;
         }
-
         // --- Status Update and Return if Video Not Ready ---
         if (videoStillNotReady) {
             setDetectionStatus(prevStatus => {
@@ -171,7 +292,7 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
         });
 
         // --- Proceed with Detection ---
-        console.log("[sendFrame] All checks passed. Calling detector.send...");
+        // console.log("[sendFrame] All checks passed. Calling detector.send...");
         try {
             if (typeof detector.send !== 'function') {
                  console.error("detector.send is not a function");
@@ -186,11 +307,12 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
             // Reset state on error? Maybe let onResults handle lack of detections.
             setFaceDetectedBox(null);
             setNumberOfFaces(0);
+            setIsLookingAway(false); // Reset pose state
         }
     }, [detectorReady, videoRef]);
 
      // --- Start/Stop Detection Interval ---
-    // <<< SIMPLIFIED: Removed isVideoReady from condition and dependencies >>>
+    // (No changes needed here, logic is sound)
     useEffect(() => {
         console.log(`[Interval Effect Check] Running. isCameraActive=${isCameraActive}, detectorReady=${detectorReady}`); // Log dependencies
 
@@ -226,6 +348,7 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
             // Ensure state is reset if detection stops/isn't running
             if (faceDetectedBox !== null) setFaceDetectedBox(null);
             if (numberOfFaces !== 0) setNumberOfFaces(0);
+            if (isLookingAway) setIsLookingAway(false); // Reset pose state
         }
 
         // Cleanup function for THIS effect instance
@@ -239,10 +362,10 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
             // setDetectionStatus('Detection stopped.');
             // setFaceDetectedBox(null);
             // setNumberOfFaces(0);
+            // setIsLookingAway(false);
         };
 
-    // <<< Dependencies: isCameraActive, detectorReady, sendFrameForDetection (stable), videoRef (stable) >>>
-    // <<< REMOVED isVideoReady >>>
+    // Dependencies: isCameraActive, detectorReady, sendFrameForDetection (stable), videoRef (stable)
     }, [isCameraActive, detectorReady, sendFrameForDetection, videoRef]);
     // --- END SIMPLIFICATION ---
 
@@ -258,6 +381,7 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
         detectorReady,
         detectionStatus,
         faceDetectedBox,
+        isLookingAway, // <-- NEW: Expose head pose status
         getLatestDetectedBox,
         numberOfFacesDetected: numberOfFaces // Return the count
     };
