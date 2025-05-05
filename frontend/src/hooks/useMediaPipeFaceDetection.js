@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 // --- Configuration ---
 const DETECTION_INTERVAL_MS = 500; // How often to run detection
 const YAW_THRESHOLD = 0.3; // Sensitivity for looking away (0.3-0.5 is a reasonable range to start tuning)
-const PITCH_THRESHOLD = 0.25; // Sensitivity for looking up/down (0.1-0.2 is a reasonable range to start tuning)
+const PITCH_THRESHOLD = 0.05; // INCREASED AGAIN: Sensitivity for looking up/down (Adjust based on logs)
 // Lower value = more sensitive (triggers on smaller head turns)
 // Higher value = less sensitive (requires larger head turns)
 
@@ -125,11 +125,12 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
                                 if (faceHeight > 0) {
                                     // Calculate vertical distance between 'between eyes' and nose tip, relative to face height
                                     const eyeNoseDistY = noseTip.y - betweenEyes.y;
-                                    const relativePitchDeviation = eyeNoseDistY / faceHeight;
-                                    console.log(`[Pose Pitch] Dev: ${relativePitchDeviation.toFixed(4)}`); // DEBUG
+                                    let relativePitchDeviation = eyeNoseDistY / faceHeight;
+                                    relativePitchDeviation = Math.abs(relativePitchDeviation) - 0.22; // Ensure it's positive
+                                    console.log(`[Pose Pitch] Raw Dev: ${(relativePitchDeviation).toFixed(4)} (Threshold: +/-${PITCH_THRESHOLD})`); // DEBUG with raw value
 
-                                    const isPitchViolation = Math.abs(relativePitchDeviation) > PITCH_THRESHOLD;
-                                    // console.log(`[Pose Pitch] Violation: ${isPitchViolation}`); // DEBUG
+                                    const isPitchViolation = Math.abs(relativePitchDeviation) > PITCH_THRESHOLD || relativePitchDeviation - 0.22 > PITCH_THRESHOLD;
+                                    // console.log(`[Pose Pitch] Abs Dev: ${Math.abs(relativePitchDeviation).toFixed(4)}, Violation: ${isPitchViolation}`); // DEBUG
 
                                     if (isPitchViolation && !lookingAway) { // Only set if yaw wasn't already true
                                         lookingAway = true;
@@ -191,8 +192,8 @@ export const useMediaPipeFaceDetection = (videoRef, isCameraActive, isVideoReady
                     maxNumFaces: 5, // <-- INCREASE THIS VALUE to detect multiple faces (e.g., 5)
                     refineLandmarks: true, // Get more accurate landmarks
                     // staticImageMode: false, // Ensure it's set for video streams
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
+                    minDetectionConfidence: 0.6, // INCREASED slightly
+                    minTrackingConfidence: 0.6  // INCREASED slightly
                 });
                 await faceMeshInstance.initialize(); // <-- FIX: Use faceMeshInstance variable
 

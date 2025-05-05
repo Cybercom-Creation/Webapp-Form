@@ -1538,7 +1538,7 @@ const Form = () => {
                             ? numberOfFacesDetected === 0
                                 ? 'Warning: No face detected.'
                                 : 'Warning: Multiple faces detected.'
-                            : '\u00A0' /* Keep space otherwise */
+                                : '\u00A0' /* Keep space otherwise */
                         }
                     </p>
 
@@ -1553,7 +1553,7 @@ const Form = () => {
                                 : {}
                         }
                     >                    
-       {isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'Warning: Look into the screen.' : '\u00A0'}
+       {isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'Warning: Look straight into the screen.' : '\u00A0'}
     </p>
     {/* --- END MODIFICATION --- */}                    
 
