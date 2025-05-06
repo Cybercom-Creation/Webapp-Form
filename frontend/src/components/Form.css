@@ -987,10 +987,8 @@ body {
   transform-origin: 50% 50%;
   stroke: #ffffff; /* Start with white stroke for drawing */
   stroke-width: 3.5; 
-  stroke-dasharray: 48;
-  stroke-dashoffset: 48;
+  stroke-dashoffset: 45;
   fill: none; /* Initially no fill */
-  animation: draw_check_stroke .4s cubic-bezier(0.65, 0, 0, 1) .8s forwards, fill_check .2s ease-in-out 1.2s forwards;
 }
 
 @keyframes stroke_checkmark {
