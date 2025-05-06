@@ -916,10 +916,10 @@ body {
 }
 
 .test-ended-card {
-  background-color: #ffffff;
+  /* background-color: #ffffff; */ /* <<< REMOVE card background */
   padding: 40px 50px;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  /* border-radius: 12px; */ /* <<< REMOVE card border-radius */
+  /* box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); */ /* <<< REMOVE card box-shadow */
   max-width: 600px;
   width: 100%;
 }
