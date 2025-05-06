@@ -107,7 +107,6 @@ const Form = () => {
     // --- ADDED: Ref for the audio visualization canvas ---
     const audioCanvasRef = useRef(null);
     // --- END ADDED ---
-    const [formSubmissionConfirmed, setFormSubmissionConfirmed] = useState(false); // State to track if WS confirmation received
     const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
@@ -306,16 +305,8 @@ const Form = () => {
                     // Listen for the specific confirmation message from the backend
                     if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
                         console.log('Form submission confirmed via WebSocket!');
-                        setFormSubmissionConfirmed(true); // Update state
-
-                        // --- Trigger the alert overlay ---
-                        setShowWarning({
-                           show: true,
-                           title: 'Form Submission Recorded',
-                           message: 'Your Google Form submission has been successfully recorded by our system.',
-                           type: 'success' // Use a success type or info
-                        });
-                        // --- ---
+                        setCurrentWarningType('form_submitted'); // Set type for warning message
+                        setShowWarning(true);
                     } else if (data.type === 'IDENTIFIED') {
                         console.log('WebSocket connection successfully identified by server.');
                     }
@@ -1932,10 +1923,9 @@ const Form = () => {
                             currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
                             currentWarningType === 'looking_away' ? 'look straight at the screen' : // <-- ADD THIS CASE
                             currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : // <-- ADD THIS CASE
+                            currentWarningType === 'form_submitted' ? 
+                                'Your Google Form submission has been successfully recorded.' :
                             'violate the test rules'}
-                            {currentWarningType === 'success' && // Assuming you use 'success' type for the form confirmation
-                                'Your Google Form submission has been successfully recorded.'
-                            }
                             {' '}again.
                         </p>
 
@@ -1980,7 +1970,7 @@ const Form = () => {
                                          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
-                                 } else if (currentWarningType === 'success') {
+                                 } else if (currentWarningType === 'form_submitted') {
                                     allowClose = true;
                                  }
  
@@ -2036,7 +2026,7 @@ const Form = () => {
                                                  triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
                                                  break;
-                                            case 'success': // Don't log the closing of the success message as a violation
+                                            case 'form_submitted': // Don't log the closing of the success message as a violation
                                                  shouldLogPopupClose = false;
                                                  break;
                                              default:
