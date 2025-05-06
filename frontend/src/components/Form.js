@@ -15,6 +15,7 @@ const Form = () => {
     const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
     const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
     const [emailId, setEmailId] = useState(null); // To store the user's email ID after submission
+    const [isTestEffectivelyOver, setIsTestEffectivelyOver] = useState(false); // New state for form submission completion
 
     const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
     const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
@@ -110,7 +111,7 @@ const Form = () => {
     const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
-     const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver; // Condition to run audio hook
+     const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
      const {
          isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
          currentDecibels, // Optional: for debugging/display
@@ -305,7 +306,8 @@ const Form = () => {
                     // Listen for the specific confirmation message from the backend
                     if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
                         console.log('Form submission confirmed via WebSocket!');
-                        setCurrentWarningType('form_submitted'); // Set type for warning message
+                        setCurrentWarningType('form_submitted');
+                        setIsTestEffectivelyOver(true); // Signal that the test is over
                         setShowWarning(true);
                     } else if (data.type === 'IDENTIFIED') {
                         console.log('WebSocket connection successfully identified by server.');
@@ -337,6 +339,29 @@ const Form = () => {
             wsRef.current = null; // Ensure ref is cleared
         };
     }, [emailId]);
+
+    // --- Effect: Handle Test Completion due to Form Submission ---
+    useEffect(() => {
+        if (isTestEffectivelyOver) {
+            console.log("Test is effectively over due to form submission confirmation. Cleaning up active proctoring...");
+
+            // Stop camera if it's on
+            if (isCameraOn) {
+                stopCamera();
+            }
+            // Stop screen sharing stream if it exists
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                setMediaStream(null); // Clear the stream state
+            }
+
+            // Mark test end if it hasn't been marked by time running out
+            // This ensures the backend knows the test concluded.
+            if (!isTimeOver) {
+                markTestEnd(); // This will also set isTimeOver if not already set by timer
+            }
+        }
+    }, [isTestEffectivelyOver, isCameraOn, stopCamera, mediaStream, setMediaStream, isTimeOver, markTestEnd]);
 
     // --- Effect 1: Initial Camera Start ---
     // This effect runs ONLY when detector becomes ready and form is not submitted.
@@ -737,8 +762,8 @@ const Form = () => {
      // ... (No changes needed here)
     // --- Face Detection Logging/Warning Trigger (REFINED LOGIC) ---
     useEffect(() => {
-        const currentTime = Date.now();
-        const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod;
+        const currentTime = Date.now(); // Moved up
+        const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
  
         // --- ADD LOGGING HERE ---
         console.log('[Face Check Effect START]', {
@@ -750,6 +775,7 @@ const Form = () => {
             noFaceStartTime: noFaceStartTime !== null,
             lookingAwayStartTime: lookingAwayStartTime !== null, // <-- Log new timer
             multipleFaceStartTime: multipleFaceStartTime !== null,
+            isTestEffectivelyOver, // Log this new state
             isFaceDetectionGracePeriod,
         });
  
@@ -904,6 +930,7 @@ const Form = () => {
         currentWarningType, // Needed to decide *if* we need to update/hide
         // Include functions/setters called
         sendProctoringLog,
+        isTestEffectivelyOver, // Added dependency
         setNoFaceStartTime,
         setMultipleFaceStartTime,
         setWarningStartTime, setShowWarning, setCurrentWarningType,
@@ -954,7 +981,7 @@ const Form = () => {
     // --- Visibility Change Listener (Unchanged Logic) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && userId && mediaStream && !isTimeOver) { // Check mediaStream here too
+        if (submitted && userId && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
             const handleVisibilityChange = () => {
                 if (document.hidden) {
                     console.log("Violation detected: Tab switched");
@@ -967,7 +994,7 @@ const Form = () => {
             document.addEventListener('visibilitychange', handleVisibilityChange);
             return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
-    }, [submitted, userId, mediaStream, isTimeOver]); // Added mediaStream
+    }, [submitted, userId, mediaStream, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
 
     // --- NEW: Effect to handle page unload during active test ---
     useEffect(() => {
@@ -976,7 +1003,7 @@ const Form = () => {
             // Check *inside* the handler if the test is still active
             // Use refs or state values that are guaranteed to be current if possible,
             // but state within the closure should be okay here due to dependency array.
-            if (submitted && userId && !isTimeOver) {
+            if (submitted && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
                 console.log(">>> beforeunload triggered during active test. Sending beacon to mark end time.");
 
                 // Construct the URL for the NEW POST endpoint
@@ -1003,7 +1030,7 @@ const Form = () => {
         };
 
         // Add the listener only when the test is active
-        if (submitted && userId && !isTimeOver) {
+        if (submitted && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
             window.addEventListener('beforeunload', handleBeforeUnload);
             console.log("<<< beforeunload listener added for active test >>>");
 
@@ -1014,21 +1041,21 @@ const Form = () => {
             };
         }
         // Ensure the effect re-runs if the test status changes
-    }, [submitted, userId, isTimeOver]);
+    }, [submitted, userId, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
     // --- End NEW Effect ---
 
 
 
     // --- Timer Logic (Unchanged) ---
-    // ... (No changes needed here)
     useEffect(() => {
+        let intervalId = null;
         // Timer should start only AFTER instructions are agreed and test begins
-        if (submitted && mediaStream) { // Check mediaStream
-            const interval = setInterval(() => {
+        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTimeOver and !isTestEffectivelyOver
+            intervalId = setInterval(() => { // Store intervalId
                 setTimer((prev) => {
                     if (prev <= 1) {
                         setIsTimeOver(true);
-                        clearInterval(interval);
+                        // clearInterval(intervalId); // Clear here if setIsTimeOver doesn't trigger cleanup immediately
                         // Optionally stop camera/screen share here if time runs out
                         if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
                         stopCamera(); // Stop webcam too
@@ -1038,9 +1065,13 @@ const Form = () => {
                     return prev - 1;
                 });
             }, 1000);
-            return () => clearInterval(interval);
         }
-    }, [submitted, mediaStream, stopCamera, markTestEnd]); // Added stopCamera dependency
+        return () => {
+            if (intervalId) { // Check if intervalId was set
+                clearInterval(intervalId);
+            }
+        };
+    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, stopCamera, markTestEnd]); // Added isTimeOver, isTestEffectivelyOver
 
 
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
@@ -1234,14 +1265,14 @@ const Form = () => {
     // --- Screenshot Interval (Unchanged) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && mediaStream && userId && !isTimeOver) {
+        if (submitted && mediaStream && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
             const interval = setInterval(() => {
                 console.log('Capturing periodic screenshot...');
                 captureScreenshot();
             }, 1 * 30 * 1000); // 2 minutes
             return () => clearInterval(interval);
         }
-    }, [submitted, mediaStream, captureScreenshot, userId, isTimeOver]);
+    }, [submitted, mediaStream, captureScreenshot, userId, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
 
 
     // --- Media Stream Cleanup (Unchanged) ---
@@ -1290,7 +1321,7 @@ const Form = () => {
 
     useEffect(() => {
         // --- Reset everything if monitoring stops ---
-        if (!isAudioMonitoringActive) {
+        if (!isAudioMonitoringActive) { // isAudioMonitoringActive already includes !isTestEffectivelyOver
             consecutiveNoiseCountRef.current = 0;
             firstNoiseViolationInSequenceTimestampRef.current = null;
             lastNoiseViolationTimestampRef.current = null;
@@ -1402,6 +1433,7 @@ const Form = () => {
         showWarning, // Need this to check if we need to show/hide
         currentWarningType, // Need this to check if we need to show/hide
         warningStartTime, // Need this for setting start time correctly
+        // isTestEffectivelyOver is implicitly handled by isAudioMonitoringActive
     ]);
         
 
@@ -1418,7 +1450,7 @@ const Form = () => {
         ctx.clearRect(0, 0, width, height);
 
         // --- Draw based on state ---
-        if (submitted && mediaStream && isAudioMonitoring && waveformArray && waveformArray.length > 0) {
+        if (submitted && mediaStream && isAudioMonitoring && waveformArray && waveformArray.length > 0 && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
             // --- Draw Background ---
             ctx.fillStyle = '#f0f0f0'; // Light grey background
             ctx.fillRect(0, 0, width, height);
@@ -1477,7 +1509,7 @@ const Form = () => {
              ctx.fillText('Audio Monitor Off', width / 2, height / 2);
         }
     // Dependencies: Draw when waveform data changes, threshold state changes, or monitoring status changes
-    }, [waveformArray, isNoiseLevelHigh, currentDecibels, submitted, mediaStream, isAudioMonitoring]);
+    }, [waveformArray, isNoiseLevelHigh, currentDecibels, submitted, mediaStream, isAudioMonitoring, isTestEffectivelyOver]); // Added isTestEffectivelyOver
     // --- END UPDATED ---
 
     // ... (No changes needed here)
@@ -1696,7 +1728,7 @@ const Form = () => {
                             : 'Submit Details'}
                     </button>
                 </form>
-            ) : submitted && mediaStream ? ( // Test Area (Test Started and Screen Sharing Active)
+            ) : submitted && !isTestEffectivelyOver && mediaStream ? ( // Test Area (Test Started, Screen Sharing Active, and test not effectively over)
                 <div className="google-form-page">
                    
                     
@@ -1784,6 +1816,15 @@ const Form = () => {
                             title="Google Form Test"
                             frameBorder="0" marginHeight="0" marginWidth="0"
                         >Loading…</iframe>
+                    </div>
+                </div>
+            ) : submitted && isTestEffectivelyOver ? ( // Test effectively over (e.g., form submitted)
+                <div className="popup-overlay">
+                    <div className="popup">
+                        <h2>Test Session Ended</h2>
+                        <p>Your Google Form submission has been recorded. Thank you for completing the test.</p>
+                        {/* You might want a button to close the window or navigate, but window.close() can be blocked by browsers */}
+                        {/* <button onClick={() => window.close()}>Close Window</button> */}
                     </div>
                 </div>
             ) : submitted && !mediaStream && !showPermissionError ? ( // Waiting for screen share after agreeing
@@ -1914,19 +1955,23 @@ const Form = () => {
             {showWarning && (
                 <div className="popup-overlay">
                     <div className="popup">
-                        <h2>Warning</h2>
+                        <h2>
+                            {currentWarningType === 'form_submitted' ? 'Submission Confirmed' : 'Warning'}
+                        </h2>
                         <p>
-                            Violation detected. Please do not{' '}
-                            {currentWarningType === 'tab_switch' ? 'switch tabs or minimize the browser' :
-                            currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
-                            currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
-                            currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
-                            currentWarningType === 'looking_away' ? 'look straight at the screen' : // <-- ADD THIS CASE
-                            currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : // <-- ADD THIS CASE
-                            currentWarningType === 'form_submitted' ? 
-                                'Your Google Form submission has been successfully recorded.' :
-                            'violate the test rules'}
-                            {' '}again.
+                            {currentWarningType === 'form_submitted' ? (
+                                'Your Google Form submission has been successfully recorded.'
+                            ) : (
+                                `Violation detected. Please do not ${
+                                    currentWarningType === 'tab_switch' ? 'switch tabs or minimize the browser' :
+                                    currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
+                                    currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
+                                    currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
+                                    currentWarningType === 'looking_away' ? 'look straight at the screen' : 
+                                    currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : 
+                                    'violate the test rules'
+                                } again.`
+                            )}
                         </p>
 
                         {/* --- MODIFIED: Always Render Close Blocked Message Paragraph --- */}
@@ -2027,7 +2072,8 @@ const Form = () => {
                                                  shouldLogPopupClose = true;
                                                  break;
                                             case 'form_submitted': // Don't log the closing of the success message as a violation
-                                                 shouldLogPopupClose = false;
+                                                 triggerEventToLog = 'form_submission_popup_closed'; // Specific event for this
+                                                 shouldLogPopupClose = true; // User wants to log this
                                                  break;
                                              default:
                                                  triggerEventToLog = 'unknown_warning';
@@ -2107,7 +2153,7 @@ const Form = () => {
 
             {/* Time Over Popup */}
             {/* ... (No changes needed here) ... */}
-            {submitted && isTimeOver && (
+            {submitted && isTimeOver && !isTestEffectivelyOver && ( // Only show if test not already over by form submission
                  <div className="popup-overlay">
                      <div className="popup blocked-message">
                         <h2>Time Over</h2>
