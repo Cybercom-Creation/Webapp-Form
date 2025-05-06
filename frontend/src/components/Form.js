@@ -14,6 +14,7 @@ const Form = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
     const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
+    const [emailId, setEmailId] = useState(null); // To store the user's email ID after submission
 
     const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
     const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
@@ -106,6 +107,8 @@ const Form = () => {
     // --- ADDED: Ref for the audio visualization canvas ---
     const audioCanvasRef = useRef(null);
     // --- END ADDED ---
+    const [formSubmissionConfirmed, setFormSubmissionConfirmed] = useState(false); // State to track if WS confirmation received
+    const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
      const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver; // Condition to run audio hook
@@ -259,6 +262,90 @@ const Form = () => {
         }
     }, [submitted, isCameraAvailable]); // Run when submitted changes or check state changes (but logic prevents re-run after initial check)
 
+
+    // --- Effect: WebSocket Connection Management ---
+    useEffect(() => {
+        // Only establish WebSocket connection if we have a userId AND haven't connected yet
+        if (!emailId || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
+            if (!emailId) {
+                console.log('WebSocket: emailId not available yet, skipping connection.');
+            } else {
+                console.log('WebSocket: Connection already open and healthy.');
+            }
+            return;
+        }
+
+        // If there's an existing wsRef but it's not open (e.g., closed, closing), clean it up first.
+        if (wsRef.current) {
+            console.log('WebSocket: Stale connection found, closing it before reconnecting.');
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+
+        // Proceed to establish a new connection
+        if (emailId) {
+            // Determine WebSocket URL based on environment
+            // Ensure your .env has REACT_APP_WS_URL=ws://localhost:5000 (or wss://your-prod-domain.com)
+            const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:5000'; // Fallback for local dev
+            console.log(`Attempting to connect WebSocket to: ${wsUrl}`);
+
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws; // Store the instance
+
+            ws.onopen = () => {
+                console.log('WebSocket connection opened');
+                // Send identification message to the backend
+                ws.send(JSON.stringify({ type: 'IDENTIFY', email: emailId }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('WebSocket message received:', data);
+
+                    // Listen for the specific confirmation message from the backend
+                    if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
+                        console.log('Form submission confirmed via WebSocket!');
+                        setFormSubmissionConfirmed(true); // Update state
+
+                        // --- Trigger the alert overlay ---
+                        setShowWarning({
+                           show: true,
+                           title: 'Form Submission Recorded',
+                           message: 'Your Google Form submission has been successfully recorded by our system.',
+                           type: 'success' // Use a success type or info
+                        });
+                        // --- ---
+                    } else if (data.type === 'IDENTIFIED') {
+                        console.log('WebSocket connection successfully identified by server.');
+                    }
+                    // Handle other message types if needed
+
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message from server:', event.data, error);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log(`WebSocket connection closed: Code=${event.code}, Reason=${event.reason}`);
+                wsRef.current = null; // Clear the ref on close
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                wsRef.current = null; // Clear the ref on error too
+            };
+        }
+
+        // Cleanup function: Close WebSocket connection when component unmounts or userId changes
+        return () => {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                console.log('Closing WebSocket connection due to component unmount or userId change.');
+                wsRef.current.close();
+            }
+            wsRef.current = null; // Ensure ref is cleared
+        };
+    }, [emailId]);
 
     // --- Effect 1: Initial Camera Start ---
     // This effect runs ONLY when detector becomes ready and form is not submitted.
@@ -607,7 +694,9 @@ const Form = () => {
 
             if (data && data.userId) {
                 setUserId(data.userId);
+                setEmailId(userDetails.email);
                 console.log("Submission successful, User ID:", data.userId);
+                console.log("Submission successful, email ID:", userDetails.email);
                 // Don't stop camera here. Effect 2's cleanup will handle it when 'submitted' becomes true later.
                 // Set flag to prevent Effect 2 cleanup from stopping camera if requestScreenCapture stops it first.
                 isInitialCameraStopped.current = true; // Mark that we intend to stop/restart
@@ -1844,6 +1933,9 @@ const Form = () => {
                             currentWarningType === 'looking_away' ? 'look straight at the screen' : // <-- ADD THIS CASE
                             currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : // <-- ADD THIS CASE
                             'violate the test rules'}
+                            {currentWarningType === 'success' && // Assuming you use 'success' type for the form confirmation
+                                'Your Google Form submission has been successfully recorded.'
+                            }
                             {' '}again.
                         </p>
 
@@ -1888,7 +1980,10 @@ const Form = () => {
                                          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
+                                 } else if (currentWarningType === 'success') {
+                                    allowClose = true;
                                  }
+ 
  
                                  // Only proceed if the close is allowed
                                  if (allowClose) {
@@ -1940,6 +2035,9 @@ const Form = () => {
                                              case 'incorrect_screen_share':
                                                  triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
+                                                 break;
+                                            case 'success': // Don't log the closing of the success message as a violation
+                                                 shouldLogPopupClose = false;
                                                  break;
                                              default:
                                                  triggerEventToLog = 'unknown_warning';

@@ -35,6 +35,22 @@ router.post('/submitted', async (req, res) => {
 
                     await user.save();
                     console.log(`Successfully marked form as submitted for user ID: ${email}`);
+
+                    // --- WebSocket Notification ---
+                    // Access the map of connected clients (passed via app.locals from app.js)
+                    const clients = req.app.locals.wsClients;
+                    if (clients && clients.has(email)) { // Check if the user has an active WebSocket connection
+                        const wsClient = clients.get(email);
+                        try {
+                            // Send a specific message type the frontend can listen for
+                            wsClient.send(JSON.stringify({ type: 'FORM_SUBMITTED_CONFIRMED', email: email, message: 'Your form submission has been processed.' }));
+                            console.log(`Sent FORM_SUBMITTED_CONFIRMED notification via WebSocket to user ID: ${email}`);
+                        } catch (wsError) {
+                            console.error(`Failed to send WebSocket message to user ID ${email}:`, wsError);
+                        }
+                    } else {
+                        console.log(`User ID ${email} not currently connected via WebSocket. Cannot send real-time notification.`);
+                    }
                 } else {
                     console.log(`Form was already marked as submitted for user ID: ${email}. Ignoring duplicate notification.`);
                 }
