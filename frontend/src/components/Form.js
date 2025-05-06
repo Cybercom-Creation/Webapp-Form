@@ -1553,6 +1553,7 @@ const Form = () => {
                         onFocus={() => {
                             // No specific action needed here for the visual effect
                         }}
+                        disabled={isLoading} // <<< ADD THIS
                         onBlur={() => checkFieldExists('name', name, setNameError)}
                         placeholder="Name" 
                         required
@@ -1579,6 +1580,7 @@ const Form = () => {
                         onFocus={() => {
                             // No specific action needed here
                         }}
+                        disabled={isLoading} // <<< ADD THIS
                         onBlur={() => checkFieldExists('email', email, setEmailError)}
                         placeholder="Email" 
                         required
@@ -1604,6 +1606,7 @@ const Form = () => {
                         onFocus={() => {
                             // No specific action needed here
                         }}
+                        disabled={isLoading} // <<< ADD THIS
                         onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
                         placeholder="Phone Number" 
                         required
