@@ -875,15 +875,15 @@ const Form = () => {
                      console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
                 }
             } else { // Face condition is normal (1 face)
-                // If the warning *was* for a face violation that is now resolved, hide it.
-                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face' )) {
-                    console.log(`Face condition corrected (${currentWarningType} resolved), hiding face-related warning.`);
-                    setShowWarning(false);
-                    // Reset general warning state *only when hiding due to correction*
-                    // The close handler won't run if it auto-hides.
-                    setWarningStartTime(null);
-                    setCurrentWarningType(null);
-                }
+                // // If the warning *was* for a face violation that is now resolved, hide it.
+                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face' )) {
+                //     console.log(`Face condition corrected (${currentWarningType} resolved), hiding face-related warning.`);
+                //     setShowWarning(false);
+                //     // Reset general warning state *only when hiding due to correction*
+                //     // The close handler won't run if it auto-hides.
+                //     setWarningStartTime(null);
+                //     setCurrentWarningType(null);
+                // }
             }
  
         }
