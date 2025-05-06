@@ -340,29 +340,6 @@ const Form = () => {
         };
     }, [emailId]);
 
-    // --- Effect: Handle Test Completion due to Form Submission ---
-    useEffect(() => {
-        if (isTestEffectivelyOver) {
-            console.log("Test is effectively over due to form submission confirmation. Cleaning up active proctoring...");
-
-            // Stop camera if it's on
-            if (isCameraOn) {
-                stopCamera();
-            }
-            // Stop screen sharing stream if it exists
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-                setMediaStream(null); // Clear the stream state
-            }
-
-            // Mark test end if it hasn't been marked by time running out
-            // This ensures the backend knows the test concluded.
-            if (!isTimeOver) {
-                markTestEnd(); // This will also set isTimeOver if not already set by timer
-            }
-        }
-    }, [isTestEffectivelyOver, isCameraOn, stopCamera, mediaStream, setMediaStream, isTimeOver, markTestEnd]);
-
     // --- Effect 1: Initial Camera Start ---
     // This effect runs ONLY when detector becomes ready and form is not submitted.
     useEffect(() => {
@@ -451,6 +428,29 @@ const Form = () => {
         }
     }, [userId]); // Dependency on userId
 
+
+    // --- Effect: Handle Test Completion due to Form Submission ---
+    useEffect(() => {
+        if (isTestEffectivelyOver) {
+            console.log("Test is effectively over due to form submission confirmation. Cleaning up active proctoring...");
+
+            // Stop camera if it's on
+            if (isCameraOn) {
+                stopCamera();
+            }
+            // Stop screen sharing stream if it exists
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                setMediaStream(null); // Clear the stream state
+            }
+
+            // Mark test end if it hasn't been marked by time running out
+            // This ensures the backend knows the test concluded.
+            if (!isTimeOver) {
+                markTestEnd(); // This will also set isTimeOver if not already set by timer
+            }
+        }
+    }, [isTestEffectivelyOver, isCameraOn, stopCamera, mediaStream, setMediaStream, isTimeOver, markTestEnd]);
 
 
      // --- Effect: Show Email Reminder Dialog on Test Start ---
