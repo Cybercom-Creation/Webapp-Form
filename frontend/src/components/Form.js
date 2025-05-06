@@ -1817,13 +1817,23 @@ const Form = () => {
                         >Loading…</iframe>
                     </div>
                 </div>
-            ) : submitted && isTestEffectivelyOver ? ( // Test effectively over (e.g., form submitted)
-                <div className="popup-overlay">
-                    <div className="popup">
-                        <h2>Test Session Ended</h2>
-                        <p>Your Google Form submission has been recorded. Thank you for completing the test.</p>
-                        {/* You might want a button to close the window or navigate, but window.close() can be blocked by browsers */}
-                        {/* <button onClick={() => window.close()}>Close Window</button> */}
+            ) : submitted && isTestEffectivelyOver ? ( // Test effectively over (e.g., form submitted or time up)
+                <div className="test-ended-container">
+                    <div className="test-ended-card">
+                        <svg className="checkmark-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+                            <circle className="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>
+                            <path className="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+                        </svg>
+                        <h1>Test Session Concluded</h1>
+                        <p>
+                            Your responses have been successfully recorded.
+                            Thank you for participating!
+                        </p>
+                        <p className="test-ended-note">
+                            You may now close this window.
+                        </p>
+                        {/* Optional: Add a button that attempts to close the window, though browser support varies */}
+                        {/* <button className="close-window-button" onClick={() => window.close()}>Close Window</button> */}
                     </div>
                 </div>
             ) : submitted && !mediaStream && !showPermissionError ? ( // Waiting for screen share after agreeing
