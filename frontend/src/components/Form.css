@@ -963,34 +963,33 @@ body {
 .checkmark-icon {
   width: 100px;
   height: 100px;
-  border-radius: 50%;
-  display: block; /* Correct */
-  stroke-width: 2;
-  stroke: #4CAF50; /* Green for success */
-  stroke-miterlimit: 10;
+  display: block;
   margin: 20px auto 30px;
-  box-shadow: inset 0px 0px 0px #4CAF50;
-  animation: fill_checkmark .4s ease-in-out .4s forwards, scale_checkmark .3s ease-in-out .9s both;
+  /* No animations needed for the icon container itself */
 }
 
 .checkmark-circle {
-  stroke-dasharray: 166;
-  stroke-dashoffset: 166;
-  stroke-width: 2;
+  /* Static appearance */
+  stroke: #4CAF50; /* Green outline */
+  stroke-width: 3; /* Adjust thickness as desired */
   stroke-miterlimit: 10;
-  stroke: #4CAF50; /* Explicitly set stroke for the circle */
-  fill: none; /* Correct for the circle stroke */
-  animation: stroke_checkmark .6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+  fill: #4CAF50; /* Green fill */
+  /* Remove animation properties */
+  /* stroke-dasharray: 166; */
+  /* stroke-dashoffset: 166; */
+  /* animation: stroke_checkmark .6s cubic-bezier(0.65, 0, 0.45, 1) forwards; */
 }
 
 .checkmark-check {
   transform-origin: 50% 50%;
-  stroke: #ffffff; /* Start with white stroke for drawing */
-  stroke-width: 3.5; 
-  stroke-dasharray: 48;
-  stroke-dashoffset: 48;
-  fill: none; /* Initially no fill */
-  animation: draw_check_stroke .4s cubic-bezier(0.65, 0, 0.45, 1) .8s forwards, fill_check .2s ease-in-out 1.2s forwards;
+  /* Static appearance */
+  stroke: #ffffff; /* White checkmark */
+  stroke-width: 3.5; /* Adjust thickness as desired, make it pop */
+  fill: #ffffff; /* Fill the checkmark to make it solid white */
+  /* Remove animation properties */
+  /* stroke-dasharray: 48; */
+  /* stroke-dashoffset: 48; */
+  /* animation: draw_check_stroke .4s cubic-bezier(0.65, 0, 0.45, 1) .8s forwards, fill_check .2s ease-in-out 1.2s forwards; */
 }
 
 @keyframes stroke_checkmark {
@@ -998,28 +997,8 @@ body {
     stroke-dashoffset: 0;
   }
 }
-
-@keyframes scale_checkmark {
-  0% {
-    transform: none;
-  }
-  20% {
-    transform: scale3d(1.1, 1.1, 1);
-  }
-  100% {
-    transform: none;
-  }
-}
-
-@keyframes fill_checkmark {
-  100% {
-    box-shadow: inset 0px 0px 0px 50px #4CAF50;
-  }
-}
-
-/* New animation to fill the checkmark itself */
-@keyframes fill_check {
-  100% {
-    fill: #ffffff; /* Fill the check with white */
-  }
-}
+/* Remove unused keyframes */
+/* @keyframes scale_checkmark { ... } */
+/* @keyframes fill_checkmark { ... } */
+/* @keyframes draw_check_stroke { ... } */ /* Assuming this was for the check path */
+/* @keyframes fill_check { ... } */
