@@ -308,7 +308,6 @@ const Form = () => {
                         console.log('Form submission confirmed via WebSocket!');
                         setCurrentWarningType('form_submitted');
                         setIsTestEffectivelyOver(true); // Signal that the test is over
-                        setShowWarning(true);
                     } else if (data.type === 'IDENTIFIED') {
                         console.log('WebSocket connection successfully identified by server.');
                     }
@@ -2015,8 +2014,6 @@ const Form = () => {
                                          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
                                          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                      }
-                                 } else if (currentWarningType === 'form_submitted') {
-                                    allowClose = true;
                                  }
  
  
@@ -2070,10 +2067,6 @@ const Form = () => {
                                              case 'incorrect_screen_share':
                                                  triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
-                                                 break;
-                                            case 'form_submitted': // Don't log the closing of the success message as a violation
-                                                 triggerEventToLog = 'form_submission_popup_closed'; // Specific event for this
-                                                 shouldLogPopupClose = true; // User wants to log this
                                                  break;
                                              default:
                                                  triggerEventToLog = 'unknown_warning';
