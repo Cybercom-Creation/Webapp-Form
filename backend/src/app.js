@@ -11,7 +11,8 @@ connectDB();
 
 const app = express();
 
-const allowedOrigins = [process.env.FRONTEND_URL]; // Add other origins if needed (e.g., deployed frontend URL)
+//const allowedOrigins = ['http://localhost:3000']; // Add other origins if needed (e.g., deployed frontend URL)
+const allowedOrigins = [process.env.FRONTEND_URL]; // for live url
 
 const corsOptions = {
   origin: function (origin, callback) {
