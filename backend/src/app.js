@@ -40,6 +40,7 @@ app.use('/api/users', require('./routes/userRoutes')); // Example path
 app.use('/api/proctoring-logs', require('./routes/logRoutes')); // Example path
 app.use('/api/screenshots', require('./routes/screenshotRoutes')); // Example path
 app.use('/api/form', require('./routes/formRoutes'));
+app.use('/api/settings', require('./routes/settingsRoutes')); // For application settings
 
 // --- Basic Error Handling (Example) ---
 app.use((err, req, res, next) => {
@@ -51,6 +52,8 @@ app.use((err, req, res, next) => {
 const server = http.createServer(app); // Create an HTTP server from the Express app
 
 const wss = new WebSocketServer({ server }); // Attach WebSocket server to the HTTP server
+
+
 
 // Store connected clients, mapping User ID (_id) to WebSocket connection
 const clients = new Map(); // Map<userId, WebSocket>

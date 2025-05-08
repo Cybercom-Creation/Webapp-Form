@@ -67,6 +67,13 @@ const Form = () => {
     // --- End Refs ---
 
 
+    // --- State for Application Settings from Admin Panel ---
+    const [applicationSettings, setApplicationSettings] = useState(null);
+    const [settingsLoading, setSettingsLoading] = useState(true); // True until settings are fetched
+
+   
+
+
       // --- State for Instruction Checkboxes (Single Object) ---
       const [instructionChecks, setInstructionChecks] = useState({
         inst1: false,
@@ -97,7 +104,7 @@ const Form = () => {
     const [showInstructions, setShowInstructions] = useState(false);
     const [showWarning, setShowWarning] = useState(false);
     const [showPermissionError, setShowPermissionError] = useState(false);
-    const [timer, setTimer] = useState(600);
+    const [timer, setTimer] = useState(null);
     const [isTimeOver, setIsTimeOver] = useState(false);
     const googleFormRef = useRef(null);
     const [mediaStream, setMediaStream] = useState(null);
@@ -111,7 +118,7 @@ const Form = () => {
     const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
-     const isAudioMonitoringActive = submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
+     const isAudioMonitoringActive = applicationSettings && applicationSettings.noiseDetectionEnabled && submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver && !settingsLoading;
      const {
          isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
          currentDecibels, // Optional: for debugging/display
@@ -129,6 +136,8 @@ const Form = () => {
         const phoneRegex = /^[0-9]{10}$/; // Example: 10-digit phone number
         return phoneRegex.test(phone);
     };
+
+    
 
     // --- Camera Control Functions ---
     const stopCamera = useCallback(() => {
@@ -262,12 +271,54 @@ const Form = () => {
         }
     }, [submitted, isCameraAvailable]); // Run when submitted changes or check state changes (but logic prevents re-run after initial check)
 
+    // --- Function to Fetch Application Settings (lifted for broader accessibility) ---
+    const fetchAppSettings = useCallback(async () => {
+        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+    
+        const getDefaultSettings = () => ({
+            liveVideoStreamEnabled: false,
+            noiseDetectionEnabled: false,
+            userPhotoFeatureEnabled: false,
+            periodicScreenshotsEnabled: false,
+            screenshotIntervalSeconds: 30,
+            testDurationSeconds: 600, // Default to 10 minutes (600 seconds)
+        });
+    
+        console.log("Attempting to fetch application settings...");
+        setSettingsLoading(true);
+        try {
+            const response = await fetch(`${apiBaseUrl}/api/settings`);
+            console.log('API Response Status:', response.status);
+            if (!response.ok) {
+                console.error(`Error fetching settings: ${response.status} ${response.statusText}`);
+                const errorBody = await response.text();
+                console.error('Error response body:', errorBody);
+                setApplicationSettings(getDefaultSettings());
+                return;
+            }
+            const settings = await response.json();
+            console.log('Fetched application settings:', settings);
+            setApplicationSettings(settings);
+        } catch (error) {
+            console.error('Failed to fetch application settings:', error);
+            setApplicationSettings(getDefaultSettings());
+        } finally {
+            setSettingsLoading(false);
+        }
+    }, []); // Empty dependency array as it doesn't depend on props/state from Form
+    
+    // --- Effect: Initial Fetch of Application Settings ---
+    useEffect(() => {
+        fetchAppSettings();
+    }, [fetchAppSettings]); // Call on mount
+    
+
 
     // --- Effect: WebSocket Connection Management ---
     useEffect(() => {
         // Only establish WebSocket connection if we have a userId AND haven't connected yet
         if (!emailId || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) {
-            if (!emailId) {
+            if (!emailId && !wsRef.current) { // Log only if truly not connecting
                 console.log('WebSocket: emailId not available yet, skipping connection.');
             } else {
                 console.log('WebSocket: Connection already open and healthy.');
@@ -308,11 +359,13 @@ const Form = () => {
                         console.log('Form submission confirmed via WebSocket!');
                         setCurrentWarningType('form_submitted');
                         setIsTestEffectivelyOver(true); // Signal that the test is over
-                    } else if (data.type === 'IDENTIFIED') {
+                    } 
+                    
+                    
+                    else if (data.type === 'IDENTIFIED') {
                         console.log('WebSocket connection successfully identified by server.');
                     }
                     // Handle other message types if needed
-
                 } catch (error) {
                     console.error('Failed to parse WebSocket message from server:', event.data, error);
                 }
@@ -337,20 +390,33 @@ const Form = () => {
             }
             wsRef.current = null; // Ensure ref is cleared
         };
-    }, [emailId]);
+    }, [emailId, fetchAppSettings]); // Add fetchAppSettings as a dependency
 
     // --- Effect 1: Initial Camera Start ---
     // This effect runs ONLY when detector becomes ready and form is not submitted.
     useEffect(() => {
-        console.log(`Effect 1 (Initial Start Check): submitted=${submitted}, detectorReady=${detectorReady}, isCameraOn=${isCameraOn}`);
+        // console.log(`Effect 1 (Initial Start Check): submitted=${submitted}, detectorReady=${detectorReady}, isCameraOn=${isCameraOn}`);
+        console.log(`Effect 1 (Initial Start Check): submitted=${submitted}, detectorReady=${detectorReady}, isCameraOn=${isCameraOn}, settingsLoading=${settingsLoading}, userPhotoEnabled=${applicationSettings?.userPhotoFeatureEnabled}`);
 
-        // Start only if: form not submitted, detector ready, AND camera isn't already on.
-        if (!submitted && detectorReady && !isCameraOn) {
-            console.log(">>> Effect 1: Conditions met. Calling startCamera('initial').");
-            startCamera('initial'); // Pass phase for logging
+        if (settingsLoading || !applicationSettings) {
+            console.log("Effect 1: Settings not loaded yet. Skipping initial camera start.");
+            return;
         }
+
+        // Start only if: form not submitted, detector ready, camera not on, AND user photo feature is enabled
+        if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled) {
+            console.log(">>> Effect 1: Conditions met (including userPhotoFeatureEnabled). Calling startCamera('initial').");
+            startCamera('initial'); // Pass phase for logging
+        } else if (!submitted && detectorReady && !isCameraOn && !applicationSettings.userPhotoFeatureEnabled) {
+            console.log(">>> Effect 1: User photo feature disabled by settings. Initial camera will not be started.");
+        }
+        // // Start only if: form not submitted, detector ready, AND camera isn't already on.
+        // if (!submitted && detectorReady && !isCameraOn) {
+        //     console.log(">>> Effect 1: Conditions met. Calling startCamera('initial').");
+        //     startCamera('initial'); // Pass phase for logging
+        // }
         // NO cleanup function here to stop the camera.
-    }, [submitted, detectorReady, isCameraOn, startCamera]); // Depends on conditions and the start function itself
+    }, [submitted, detectorReady, isCameraOn, startCamera, applicationSettings, settingsLoading]); // Depends on conditions and the start function itself
 
 
     // --- Effect 2: Stop Initial Camera on Submission or Unmount ---
@@ -653,38 +719,77 @@ const Form = () => {
         }
 
         // 2. Check camera/face state
-        if (!isCameraOn || !isVideoReady) {
-            setError('Camera is not ready. Please wait or check permissions.');
-            return;
-        }
-        if (numberOfFacesDetected !== 1) {
-            setError('Please ensure exactly one face is clearly visible in the camera.');
-            return;
-        }
+        // if (!isCameraOn || !isVideoReady) {
+        //     setError('Camera is not ready. Please wait or check permissions.');
+        //     return;
+        // }
+        // if (numberOfFacesDetected !== 1) {
+        //     setError('Please ensure exactly one face is clearly visible in the camera.');
+        //     return;
+        // }
 
-        // --- ADDED: Check if user is looking away ---
-        if (isLookingAway) {
-            setError('Please look straight into the screen to submit.');
-            return;
+        // // --- ADDED: Check if user is looking away ---
+        // if (isLookingAway) {
+        //     setError('Please look straight into the screen to submit.');
+        //     return;
+        // }
+
+        // // 3. Capture the face photo NOW
+        // console.log("handleSubmit: Attempting to capture face photo...");
+        // const captureResult = captureCurrentFaceBase64();
+
+        // if (captureResult.error || !captureResult.photoBase64) {
+        //     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
+        //     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
+        //     return;
+        // }
+
+        // const capturedPhotoBase64 = captureResult.photoBase64;
+        // console.log("handleSubmit: Face photo captured successfully.");
+        let capturedPhotoBase64 = null;
+
+        if (applicationSettings && applicationSettings.userPhotoFeatureEnabled) {
+            // 2. Check camera/face state if photo capture is enabled
+            if (!isCameraOn || !isVideoReady) {
+                setError('Camera is not ready for photo capture. Please wait or check permissions.');
+                setIsLoading(false);
+                return;
+            }
+            if (numberOfFacesDetected !== 1) {
+                setError('Please ensure exactly one face is clearly visible for the photo.');
+                setIsLoading(false);
+                return;
+            }
+            if (isLookingAway) {
+                setError('Please look straight into the screen for the photo.');
+                setIsLoading(false);
+                return;
+            }
+
+            // 3. Capture the face photo NOW
+            console.log("handleSubmit: User photo feature enabled. Attempting to capture face photo...");
+            const captureResult = captureCurrentFaceBase64();
+
+            if (captureResult.error || !captureResult.photoBase64) {
+                setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
+                console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
+                setIsLoading(false);
+                return;
+            }
+            capturedPhotoBase64 = captureResult.photoBase64;
+            console.log("handleSubmit: Face photo captured successfully.");
+        } else {
+            console.log("handleSubmit: User photo feature is DISABLED by settings. Skipping photo capture.");
         }
-
-        // 3. Capture the face photo NOW
-        console.log("handleSubmit: Attempting to capture face photo...");
-        const captureResult = captureCurrentFaceBase64();
-
-        if (captureResult.error || !captureResult.photoBase64) {
-            setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
-            console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
-            return;
-        }
-
-        const capturedPhotoBase64 = captureResult.photoBase64;
-        console.log("handleSubmit: Face photo captured successfully.");
 
         setIsLoading(true);
 
         // 4. Prepare data and submit
-        const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
+        // const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
+        const userDetails = { name, email, phone };
+        if (capturedPhotoBase64) { // Only add if captured
+            userDetails.photoBase64 = capturedPhotoBase64;
+        }
         console.log("Submitting form with captured photo...");
 
         try {
@@ -820,25 +925,25 @@ const Form = () => {
                     sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
                     setLookingAwayStartTime(null);
                 }
-            } else if (isLookingAway) { // <-- NEW: Check for looking away (only if 1 face is detected)
-                console.log("[Face Check Effect] Condition MET: isLookingAway is true"); // DEBUG
-                faceViolationActive = true;
-                newWarningType = 'looking_away';
-                if (lookingAwayStartTime === null) {
-                    setLookingAwayStartTime(currentTime); // Start timer
-                    console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
-                }
-                // Clear other face timers if they were running
-                if (noFaceStartTime !== null) {
-                    console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
-                    sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
-                    setNoFaceStartTime(null);
-                }
-                if (multipleFaceStartTime !== null) {
-                    console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
-                    sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
-                    setMultipleFaceStartTime(null);
-                }
+            // } else if (isLookingAway) { // <-- NEW: Check for looking away (only if 1 face is detected)
+            //     console.log("[Face Check Effect] Condition MET: isLookingAway is true"); // DEBUG
+            //     faceViolationActive = true;
+            //     newWarningType = 'looking_away';
+            //     if (lookingAwayStartTime === null) {
+            //         setLookingAwayStartTime(currentTime); // Start timer
+            //         console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
+            //     }
+            //     // Clear other face timers if they were running
+            //     if (noFaceStartTime !== null) {
+            //         console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
+            //         sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+            //         setNoFaceStartTime(null);
+            //     }
+            //     if (multipleFaceStartTime !== null) {
+            //         console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
+            //         sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+            //         setMultipleFaceStartTime(null);
+            //     }
             } else { // numberOfFacesDetected === 1 AND not looking away (Normal)
                 // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
@@ -1049,7 +1154,8 @@ const Form = () => {
     useEffect(() => {
         let intervalId = null;
         // Timer should start only AFTER instructions are agreed and test begins
-        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTimeOver and !isTestEffectivelyOver
+        // if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTimeOver and !isTestEffectivelyOver
+        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver && timer !== null && timer > 0) {
             intervalId = setInterval(() => { // Store intervalId
                 setTimer((prev) => {
                     if (prev <= 1) {
@@ -1070,12 +1176,20 @@ const Form = () => {
                 clearInterval(intervalId);
             }
         };
-    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, stopCamera, markTestEnd]); // Added isTimeOver, isTestEffectivelyOver
+    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, timer, stopCamera, markTestEnd]); // Added isTimeOver, isTestEffectivelyOver
 
 
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
     const requestScreenCapture = async () => {
         setShowInstructions(false); // Close instructions popup first
+
+        if (settingsLoading || !applicationSettings) {
+            console.warn("requestScreenCapture: Settings not loaded or still loading. Aborting.");
+            // Optionally, show a message to the user in the main error display
+            setError("Application settings are still loading. Please wait a moment and try again.");
+            return;
+        }
+
         // isInitialCameraStopped.current = false; // Reset flag before attempting screen share
 
         try {
@@ -1088,9 +1202,16 @@ const Form = () => {
             console.log('Screen sharing started successfully!');
 
             // Explicitly stop the initial camera BEFORE starting the test phase camera
-            console.log('requestScreenCapture: Stopping initial camera...');
-            stopCamera();
-            isInitialCameraStopped.current = true; // Mark that we handled the stop
+            // console.log('requestScreenCapture: Stopping initial camera...');
+            // stopCamera();
+            // isInitialCameraStopped.current = true; // Mark that we handled the stop
+
+            // Stop initial camera only if it was started (e.g., for user photo)
+            if (applicationSettings.userPhotoFeatureEnabled && isCameraOn) {
+                console.log('requestScreenCapture: Stopping initial camera (as user photo was enabled)...');
+                stopCamera();
+                isInitialCameraStopped.current = true; // Mark that we handled the stop
+            }
 
             // --- ADDED CHECK: Verify if a browser tab was shared ---
             const videoTrack = stream.getVideoTracks()[0];
@@ -1116,29 +1237,78 @@ const Form = () => {
             // Use setTimeout to allow hardware/browser to release the camera before restarting
             setTimeout(() => {
                 const startTestCamera = async () => {
-                    console.log('requestScreenCapture (setTimeout): Attempting startCamera("test")...');
-                    try {
-                        await startCamera('test'); // Wait for startCamera to attempt acquisition
-                        console.log('requestScreenCapture (setTimeout): startCamera("test") initiated (async).');
+                    // console.log('requestScreenCapture (setTimeout): Attempting startCamera("test")...');
+                    // try {
+                    //     await startCamera('test'); // Wait for startCamera to attempt acquisition
+                    //     console.log('requestScreenCapture (setTimeout): startCamera("test") initiated (async).');
 
-                        // --- Set submitted state AFTER initiating camera start ---
-                        // This allows the test UI to render, and useEffects will handle the camera state changes.
-                        setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE
-                        setIsFaceDetectionGracePeriod(true); // Start grace period
+                    //     // --- Set submitted state AFTER initiating camera start ---
+                    //     // This allows the test UI to render, and useEffects will handle the camera state changes.
+                    //     setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE
+                    //     setIsFaceDetectionGracePeriod(true); // Start grace period
 
-                    } catch (startError) {
-                        // This catch might not be strictly necessary if startCamera handles its own errors well,
-                        // but it adds an extra layer of safety for unexpected issues during the call itself.
-                        console.error('requestScreenCapture (setTimeout): Error occurred *during* the call to startCamera("test"):', startError);
-                        // Handle failure to start the test camera
-                        setCameraError("Failed to restart camera for the test. Please try again.");
-                        setSubmitted(false); // Ensure we don't proceed to test phase
-                        setIsFaceDetectionGracePeriod(false);
-                        // Optionally stop screen sharing stream if camera fails?
-                        if (stream) stream.getTracks().forEach(track => track.stop());
-                        setMediaStream(null);
-                        setShowInstructions(true); // Maybe go back to instructions? Or show a specific error popup.
+                    // } catch (startError) {
+                    //     // This catch might not be strictly necessary if startCamera handles its own errors well,
+                    //     // but it adds an extra layer of safety for unexpected issues during the call itself.
+                    //     console.error('requestScreenCapture (setTimeout): Error occurred *during* the call to startCamera("test"):', startError);
+                    //     // Handle failure to start the test camera
+                    //     setCameraError("Failed to restart camera for the test. Please try again.");
+                    //     setSubmitted(false); // Ensure we don't proceed to test phase
+                    //     setIsFaceDetectionGracePeriod(false);
+                    //     // Optionally stop screen sharing stream if camera fails?
+                    //     if (stream) stream.getTracks().forEach(track => track.stop());
+                    //     setMediaStream(null);
+                    //     setShowInstructions(true); // Maybe go back to instructions? Or show a specific error popup.
+                    // }
+
+                    let durationInSeconds = 600; // Default to 10 minutes (600 seconds)
+                    if (applicationSettings) {
+                        if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
+                            durationInSeconds = Number(applicationSettings.testDurationInterval) * 60;
+                            console.log(`Test timer initialized from testDurationInterval: ${durationInSeconds} seconds (${applicationSettings.testDurationInterval} minutes)`);
+                        } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
+                            durationInSeconds = Number(applicationSettings.testDurationSeconds);
+                            console.log(`Test timer initialized from testDurationSeconds: ${durationInSeconds} seconds`);
+                        } else {
+                            console.log(`Test timer initialized to default (600s) due to missing/invalid duration in settings.`);
+                        }
+                    } else {
+                        console.log(`Test timer initialized to default (600s) because applicationSettings are not available.`);
                     }
+                    setTimer(durationInSeconds);
+
+                    if (applicationSettings.liveVideoStreamEnabled) {
+
+                        
+                        console.log('requestScreenCapture (setTimeout): Live video stream enabled. Attempting startCamera("test")...');
+                        try {
+                            await startCamera('test'); // Wait for startCamera to attempt acquisition
+                            console.log('requestScreenCapture (setTimeout): startCamera("test") initiated (async).');
+                        } catch (startError) {
+                            console.error('requestScreenCapture (setTimeout): Error occurred *during* the call to startCamera("test"):', startError);
+                            setCameraError("Failed to restart camera for the test. Please try again.");
+                            // Stop screen sharing if camera fails to start for test
+                            //if (stream) stream.getTracks().forEach(track => track.stop());
+                            stream.getTracks().forEach(track => track.stop());
+                            setMediaStream(null);
+                            // Do not proceed to setSubmitted(true)
+                            setShowInstructions(true); // Go back to instructions or show error
+                            return; // Exit to prevent setting submitted
+                        }
+                    } else {
+                        console.log('requestScreenCapture (setTimeout): Live video stream is DISABLED by settings. Camera will not be started for test.');
+                        // Ensure camera is off if it was somehow on from initial phase
+                        if (isCameraOn) stopCamera();
+                    }
+                    
+
+                    // --- Set submitted state AFTER initiating camera start (or deciding not to) ---
+                    // This allows the test UI to render, and useEffects will handle the camera state changes.
+                    setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE
+                    setIsFaceDetectionGracePeriod(true); // Start grace period
+                    markTestStart(); // Call backend to mark test start
+
+
                 };
                 startTestCamera(); // Pass phase for logging
             }, 200); // Increased delay slightly (e.g., 200ms)
@@ -1146,7 +1316,7 @@ const Form = () => {
             setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE TO START TEST PHASE
             setIsFaceDetectionGracePeriod(true);
 
-            markTestStart(); // Call backend to mark test start
+            //markTestStart(); // Call backend to mark test start
 
             // const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {
@@ -1264,14 +1434,28 @@ const Form = () => {
     // --- Screenshot Interval (Unchanged) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && mediaStream && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
+        // if (submitted && mediaStream && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
+
+        if (settingsLoading || !applicationSettings) {
+            return; // Wait for settings
+        }
+        if (applicationSettings.periodicScreenshotsEnabled &&
+            submitted &&
+            mediaStream &&
+            userId &&
+            !isTimeOver &&
+            !isTestEffectivelyOver) {
+            const intervalTime = (applicationSettings.screenshotIntervalSeconds || 30) * 1000; // Default to 30 seconds if not set
+            console.log(`Setting up periodic screenshots every ${intervalTime / 1000} seconds.`);
             const interval = setInterval(() => {
                 console.log('Capturing periodic screenshot...');
                 captureScreenshot();
-            }, 1 * 30 * 1000); // 2 minutes
+            }, intervalTime); 
             return () => clearInterval(interval);
         }
-    }, [submitted, mediaStream, captureScreenshot, userId, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
+    }, [applicationSettings, settingsLoading, submitted, mediaStream, captureScreenshot, userId, isTimeOver, isTestEffectivelyOver]);
+
+    // [submitted, mediaStream, captureScreenshot, userId, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
 
 
     // --- Media Stream Cleanup (Unchanged) ---
@@ -1513,13 +1697,14 @@ const Form = () => {
 
     // ... (No changes needed here)
     const isSubmitDisabled =
+        settingsLoading || // Disable while settings are loading
         isCameraAvailable === null || // Still checking for camera
         !name || !!nameError ||
         !email || !!emailError ||
         !phone || !!phoneError ||
         !isCameraOn || !isVideoReady || // Camera must be fully ready
         numberOfFacesDetected !== 1 || // Exactly one face must be detected
-        isLookingAway || // <-- ADDED: User must be looking straight
+        //isLookingAway || // <-- ADDED: User must be looking straight
         !detectorReady; // Detector must be ready
 
 
@@ -1533,6 +1718,11 @@ const Form = () => {
         setInstructionChecks(prevChecks => ({ ...prevChecks, [id]: checked }));
     };
 
+
+    // console.log(
+    //     'Render State - settingsLoading:', settingsLoading,
+    //     'applicationSettings:', JSON.stringify(applicationSettings, null, 2)
+    // );
 
     // --- JSX Rendering ---
     return (
@@ -1674,14 +1864,25 @@ const Form = () => {
 
                         {/* Live feed container */}
                         <div className="camera-live-container">
-                            <video
+                            {/* <video
                                 ref={videoRef}
                                 autoPlay
                                 playsInline
                                 muted // Ensure muted
                                 className="camera-video-feed"
                                 style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
-                            ></video>
+                            ></video> */}
+                            {applicationSettings?.userPhotoFeatureEnabled && (
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted // Ensure muted
+                                    className="camera-video-feed"
+                                    style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
+                                ></video>
+                            )}
+                            {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box">User photo capture disabled.</div>}
                             {/* Placeholder when camera is off */}
                             {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
@@ -1705,10 +1906,15 @@ const Form = () => {
                         disabled={isLoading ||isSubmitDisabled} // Use the calculated disabled state
                     >
                         {/* Show spinner ONLY when isLoading is true */}
-                        {isLoading && <div className="spinner"></div>}
+                        {/* {isLoading && <div className="spinner"></div>} */}
 
-                        {isLoading
-                        ? 'Submitting...' 
+                        {/* {isLoading
+                        ? 'Submitting...'  */}
+                        {(isLoading || settingsLoading) && <div className="spinner"></div>}
+                        {settingsLoading
+                        ? 'Loading Settings...'
+                        : isLoading
+                        ? 'Submitting...'
                         : isSubmitDisabled
                         ? isCameraAvailable === null
                         ? 'Checking Camera...' // NEW
@@ -1738,21 +1944,41 @@ const Form = () => {
                     
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
-                            <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p>
+                            {/* <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p> */}
+                            <p className="custom-timer">
+                                Time remaining: {timer !== null ? 
+                                    `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : 
+                                    'Loading...'}
+                            </p>
                         </div>
                         <div className="camera-feed">
                             <div className="camera-box">
-                                {cameraError && <p className="error-message camera-error">{cameraError}</p>}
-                                <video
+                                {/* {cameraError && <p className="error-message camera-error">{cameraError}</p>} */}
+                                {/* <video
                                     ref={videoRef}
                                     autoPlay
                                     playsInline
                                     muted // Ensure muted
                                     className={`camera-video ${cameraError ? 'hidden' : ''}`}
                                     style={{ transform: 'scaleX(-1)' }} // Flip horizontally
-                                ></video>
+                                ></video> */}
                                 {/* Show placeholder if camera is intended ON but not ready/error */}
-                                {isCameraOn && !isVideoReady && !cameraError && !detectorReady && <p className="camera-placeholder">Initializing...</p>}
+                                {/* {isCameraOn && !isVideoReady && !cameraError && !detectorReady && <p className="camera-placeholder">Initializing...</p>} */}
+                                {applicationSettings?.liveVideoStreamEnabled && cameraError && <p className="error-message camera-error">{cameraError}</p>}
+                                {applicationSettings?.liveVideoStreamEnabled && (
+                                    <video
+                                        ref={videoRef}
+                                        autoPlay
+                                        playsInline
+                                        muted
+                                        className={`camera-video ${cameraError ? 'hidden' : ''}`}
+                                        style={{ transform: 'scaleX(-1)' }}
+                                    ></video>
+                                )}
+                                {applicationSettings?.liveVideoStreamEnabled && isCameraOn && !isVideoReady && !cameraError && <p className="camera-placeholder">Initializing...</p>}
+                                {!applicationSettings?.liveVideoStreamEnabled && !settingsLoading && (
+                                    <p className="camera-placeholder">Live video disabled by admin.</p>
+                                )}
                                 {/* Show placeholder if camera is OFF */}
                                 {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
                             </div>
@@ -1860,7 +2086,7 @@ const Form = () => {
                             {/* Instruction 1 */}
                             <div className="instruction-item">
                                 <input type="checkbox" id="inst1" checked={instructionChecks.inst1} onChange={handleInstructionCheckChange} />
-                                <label htmlFor="inst1">You will have <strong>{Math.floor(600 / 60)} minutes</strong> to complete the test.</label>
+                                <label htmlFor="inst1">You will have <strong>${Math.floor((applicationSettings?.testDurationSeconds || 600) / 60)} minutes</strong> to complete the test.</label>
                             </div>
                             {/* Instruction 2 */}
                             <div className="instruction-item">
@@ -1930,7 +2156,8 @@ const Form = () => {
                          <button
                             className="agree-button"
                             onClick={requestScreenCapture}
-                            disabled={!allInstructionsChecked} /* <<< This binding was already correct */
+                            // disabled={!allInstructionsChecked} /* <<< This binding was already correct */
+                            disabled={!allInstructionsChecked || settingsLoading}
                         >
                              I Agree
                              </button>
@@ -1979,7 +2206,7 @@ const Form = () => {
                                     currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
                                     currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
                                     currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
-                                    currentWarningType === 'looking_away' ? 'look straight at the screen' : 
+                                    // currentWarningType === 'looking_away' ? 'look straight at the screen' : 
                                     currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : 
                                     'violate the test rules'
                                 } again.`
@@ -2020,13 +2247,13 @@ const Form = () => {
                                         blockReason = 'Please ensure a quiet environment to close this warning.';
                                         console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
                                     }
-                                } else if (currentWarningType === 'looking_away') { // <-- NEW CHECK
-                                    console.log(`[Close Button Check] Checking 'looking_away'. Current isLookingAway state: ${isLookingAway}`); // DEBUG
-                                    if (isLookingAway) { // Looking away violation still active
-                                        allowClose = false;
-                                         blockReason = 'Please ensure your face is looking at the screen to close this warning.';
-                                         console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
-                                     }
+                                // } else if (currentWarningType === 'looking_away') { // <-- NEW CHECK
+                                //     console.log(`[Close Button Check] Checking 'looking_away'. Current isLookingAway state: ${isLookingAway}`); // DEBUG
+                                //     if (isLookingAway) { // Looking away violation still active
+                                //         allowClose = false;
+                                //          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
+                                //          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                //      }
                                  }
  
  
@@ -2073,10 +2300,10 @@ const Form = () => {
                                                  triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
                                                 break;
-                                            case 'looking_away': // <-- NEW CASE
-                                                triggerEventToLog = 'looking_away'; // Log acknowledgement when resolved and closed
-                                                shouldLogPopupClose = true;
-                                                 break;
+                                            // case 'looking_away': // <-- NEW CASE
+                                            //     triggerEventToLog = 'looking_away'; // Log acknowledgement when resolved and closed
+                                            //     shouldLogPopupClose = true;
+                                            //      break;
                                              case 'incorrect_screen_share':
                                                  triggerEventToLog = 'incorrect_screen_share'; // Log acknowledgement when resolved and closed
                                                  shouldLogPopupClose = true;
