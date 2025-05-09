@@ -1158,7 +1158,24 @@ const Form = () => {
         let intervalId = null;
         // Timer should start only AFTER instructions are agreed and test begins
         // if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTimeOver and !isTestEffectivelyOver
-        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver && timer !== null && timer > 0 && !isTimerPaused) {
+        // if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver && timer !== null && timer > 0 && !isTimerPaused) {
+            let canTimerRun = submitted &&
+            !isTimeOver &&
+            !isTestEffectivelyOver &&
+            timer !== null &&
+            timer > 0 &&
+            !isTimerPaused;
+
+        if (applicationSettings) {
+        if (applicationSettings.periodicScreenshotsEnabled) {
+        // If screenshots are enabled, mediaStream (screen share) is required for the timer to run
+        canTimerRun = canTimerRun && !!mediaStream;
+        }
+        // If screenshots are disabled, mediaStream is NOT required for the timer.
+        } else {
+        canTimerRun = false; // Don't run timer if settings aren't loaded
+        }
+        if(canTimerRun) {
             console.log(`Timer Effect: Starting/Resuming interval. Current timer: ${timer}, Paused: ${isTimerPaused}`);
             intervalId = setInterval(() => { // Store intervalId
                 setTimer((prev) => {
@@ -1166,7 +1183,10 @@ const Form = () => {
                         setIsTimeOver(true);
                         // clearInterval(intervalId); // Clear here if setIsTimeOver doesn't trigger cleanup immediately
                         // Optionally stop camera/screen share here if time runs out
-                        if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+                        //if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+                        if (mediaStream && typeof mediaStream.getTracks === 'function') {
+                            mediaStream.getTracks().forEach(track => track.stop());
+                        }
                         stopCamera(); // Stop webcam too
                         markTestEnd();
                         setIsTimerPaused(false); // Ensure unpaused if time runs out
@@ -1187,8 +1207,63 @@ const Form = () => {
 
             }
         };
-    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, timer, stopCamera, markTestEnd, isTimerPaused]); // Added isTimeOver, isTestEffectivelyOver
+    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, timer, stopCamera, markTestEnd, isTimerPaused, applicationSettings]); // Added isTimeOver, isTestEffectivelyOver
 
+    // --- Handler for "I Agree" button on instructions popup ---
+    const handleAgreeAndStartTest = async () => {
+        setShowInstructions(false); // Close instructions popup first
+
+        if (settingsLoading || !applicationSettings) {
+            setError("Application settings are still loading. Please wait a moment and try again.");
+            return;
+        }
+
+        if (applicationSettings.periodicScreenshotsEnabled) {
+            // Proceed with screen capture as before
+            await requestScreenCapture();
+        } else {
+            // Screenshots are disabled, skip screen capture, directly start test
+            console.log("Periodic screenshots disabled. Skipping screen capture, starting test directly.");
+
+            // Stop initial camera if it was on for user photo
+            if (applicationSettings.userPhotoFeatureEnabled && isCameraOn) {
+                console.log('handleAgreeAndStartTest: Stopping initial camera (user photo was enabled, screenshots off)...');
+                stopCamera();
+                isInitialCameraStopped.current = true;
+            }
+
+            // Set up timer
+            let durationInSeconds = 600; // Default
+            if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
+                durationInSeconds = Number(applicationSettings.testDurationInterval) * 60;
+            } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
+                durationInSeconds = Number(applicationSettings.testDurationSeconds);
+            }
+            setTimer(durationInSeconds);
+            console.log(`Timer initialized to ${durationInSeconds} seconds (screenshots disabled).`);
+            markTestStart();
+
+            // Start test camera if live video is enabled
+            if (applicationSettings.liveVideoStreamEnabled) {
+                console.log('handleAgreeAndStartTest: Live video enabled. Starting test camera...');
+                try {
+                    await startCamera('test');
+                } catch (startError) {
+                    console.error('handleAgreeAndStartTest: Error starting test camera:', startError);
+                    setCameraError("Failed to start camera for the test. Please try again.");
+                    return; // Don't proceed if camera fails
+                }
+            } else {
+                console.log('handleAgreeAndStartTest: Live video disabled. Test camera will not be started.');
+                if (isCameraOn) stopCamera(); // Ensure camera is off
+            }
+
+            setSubmitted(true);
+            setIsFaceDetectionGracePeriod(true); // If face detection is still used for live video
+            setIsTimerPaused(false);
+            // mediaStream will be null, which is handled by the timer's useEffect and screenshot logic
+        }
+    };
 
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
     const requestScreenCapture = async () => {
@@ -2029,8 +2104,13 @@ const Form = () => {
                              {/* Display the determined button text */}
                         {submitButtonText}
                     </button>
-                </form>
-            ) : submitted && !isTestEffectivelyOver && mediaStream ? ( // Test Area (Test Started, Screen Sharing Active, and test not effectively over)
+                {/* </form>
+            ) : submitted && !isTestEffectivelyOver && mediaStream ? ( // Test Area (Test Started, Screen Sharing Active, and test not effectively over) */}
+             </form>
+            ) : submitted && 
+                !isTestEffectivelyOver && 
+                (mediaStream || (applicationSettings && !applicationSettings.periodicScreenshotsEnabled)) 
+                ? ( // Test Area: Show if submitted, test not over, AND (screen share active OR screenshots are disabled)
                 <div className="google-form-page">
                    
                     
@@ -2074,7 +2154,7 @@ const Form = () => {
                                     <p className="camera-placeholder"></p>
                                 )}
                                 {/* Show placeholder if camera is OFF */}
-                                {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
+                                {/* {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>} */}
                             </div>
                             {/* Display Audio Setup Error if present */}
                             {audioSetupError && <p className="error-message audio-error">{audioSetupError}</p>}
@@ -2158,8 +2238,13 @@ const Form = () => {
                         {/* Optional: Add a button that attempts to close the window, though browser support varies */}
                         {/* <button className="close-window-button" onClick={() => window.close()}>Close Window</button> */}
                     </div>
-                </div>
-            ) : submitted && !mediaStream && !showPermissionError ? ( // Waiting for screen share after agreeing
+                {/* </div>
+            ) : submitted && !mediaStream && !showPermissionError ? ( // Waiting for screen share after agreeing */}
+                </div> // Waiting for screen share after agreeing, ONLY if screenshots are enabled
+                ) : submitted && 
+                !mediaStream && 
+                !showPermissionError && 
+                applicationSettings && applicationSettings.periodicScreenshotsEnabled ? ( 
                  <div className="loading-message">
                     <p>Waiting for screen sharing permission...</p>
                     {/* Optionally add a cancel button here? */}
@@ -2249,7 +2334,8 @@ const Form = () => {
                          </div>
                          <button
                             className="agree-button"
-                            onClick={requestScreenCapture}
+                            //onClick={requestScreenCapture}
+                            onClick={handleAgreeAndStartTest}
                             // disabled={!allInstructionsChecked} /* <<< This binding was already correct */
                             disabled={!allInstructionsChecked || settingsLoading}
                         >
@@ -2485,6 +2571,14 @@ const Form = () => {
                      <div className="popup blocked-message">
                         <h2>Time Over</h2>
                         <p>Your time for the test has expired.</p>
+                        <button
+                            className="close-button" // Or a new style like "ok-button"
+                            onClick={() => {
+                                setIsTestEffectivelyOver(true); // This will trigger the "Test Session Concluded" view
+                            }}
+                        >
+                            OK
+                        </button>
                      </div>
                 </div>
             )}
