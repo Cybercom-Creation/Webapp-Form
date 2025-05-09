@@ -71,6 +71,8 @@ const Form = () => {
     const [applicationSettings, setApplicationSettings] = useState(null);
     const [settingsLoading, setSettingsLoading] = useState(true); // True until settings are fetched
 
+    const [isTimerPaused, setIsTimerPaused] = useState(false); // <<< NEW: State for pausing the timer
+
    
 
 
@@ -1156,7 +1158,8 @@ const Form = () => {
         let intervalId = null;
         // Timer should start only AFTER instructions are agreed and test begins
         // if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTimeOver and !isTestEffectivelyOver
-        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver && timer !== null && timer > 0) {
+        if (submitted && mediaStream && !isTimeOver && !isTestEffectivelyOver && timer !== null && timer > 0 && !isTimerPaused) {
+            console.log(`Timer Effect: Starting/Resuming interval. Current timer: ${timer}, Paused: ${isTimerPaused}`);
             intervalId = setInterval(() => { // Store intervalId
                 setTimer((prev) => {
                     if (prev <= 1) {
@@ -1166,18 +1169,25 @@ const Form = () => {
                         if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
                         stopCamera(); // Stop webcam too
                         markTestEnd();
+                        setIsTimerPaused(false); // Ensure unpaused if time runs out
                         return 0;
                     }
                     return prev - 1;
                 });
             }, 1000);
         }
+        else {
+            // This block executes if conditions are not met (e.g., timer paused, time over, etc.)
+            // If an interval was running, it should be cleared by the cleanup.
+            // console.log(`Timer Effect: Conditions not met or timer paused. Interval not started/cleared. Timer: ${timer}, Paused: ${isTimerPaused}, Submitted: ${submitted}, MediaStream: ${!!mediaStream}`);
+        }
         return () => {
             if (intervalId) { // Check if intervalId was set
                 clearInterval(intervalId);
+
             }
         };
-    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, timer, stopCamera, markTestEnd]); // Added isTimeOver, isTestEffectivelyOver
+    }, [submitted, mediaStream, isTimeOver, isTestEffectivelyOver, timer, stopCamera, markTestEnd, isTimerPaused]); // Added isTimeOver, isTestEffectivelyOver
 
 
     // --- Screen Capture Request (Modified to manage camera stop/start) ---
@@ -1190,6 +1200,9 @@ const Form = () => {
             setError("Application settings are still loading. Please wait a moment and try again.");
             return;
         }
+
+        // If we are resuming from a paused state, don't reset the timer.
+        const isResumingAfterPause = isTimerPaused; // Capture current paused state
 
         // isInitialCameraStopped.current = false; // Reset flag before attempting screen share
 
@@ -1262,21 +1275,29 @@ const Form = () => {
                     //     setShowInstructions(true); // Maybe go back to instructions? Or show a specific error popup.
                     // }
 
-                    let durationInSeconds = 600; // Default to 10 minutes (600 seconds)
-                    if (applicationSettings) {
-                        if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
-                            durationInSeconds = Number(applicationSettings.testDurationInterval) * 60;
-                            console.log(`Test timer initialized from testDurationInterval: ${durationInSeconds} seconds (${applicationSettings.testDurationInterval} minutes)`);
-                        } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
-                            durationInSeconds = Number(applicationSettings.testDurationSeconds);
-                            console.log(`Test timer initialized from testDurationSeconds: ${durationInSeconds} seconds`);
-                        } else {
-                            console.log(`Test timer initialized to default (600s) due to missing/invalid duration in settings.`);
-                        }
+                     // --- Timer Initialization Logic ---
+                     if (!isResumingAfterPause) { // Only set/reset timer if NOT resuming from a pause
+                        let durationInSeconds = 600; // Default to 10 minutes (600 seconds)
+                        if (applicationSettings) {
+                            if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
+                                durationInSeconds = Number(applicationSettings.testDurationInterval) * 60;
+                                console.log(`Test timer initialized from testDurationInterval: ${durationInSeconds} seconds (${applicationSettings.testDurationInterval} minutes)`);
+                            } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
+                                durationInSeconds = Number(applicationSettings.testDurationSeconds);
+                                console.log(`Test timer initialized from testDurationSeconds: ${durationInSeconds} seconds`);
+                            } else {
+                                console.log(`Test timer initialized to default (600s) due to missing/invalid duration in settings.`);
+                            }
                     } else {
                         console.log(`Test timer initialized to default (600s) because applicationSettings are not available.`);
                     }
                     setTimer(durationInSeconds);
+                    console.log(`Timer initialized to ${durationInSeconds} seconds.`);
+                    markTestStart(); // Mark start only on the first full initiation
+                }
+                else {
+                    console.log(`Resuming test. Timer continues from ${timer} seconds.`);
+                }
 
                     if (applicationSettings.liveVideoStreamEnabled) {
 
@@ -1307,7 +1328,8 @@ const Form = () => {
                     // This allows the test UI to render, and useEffects will handle the camera state changes.
                     setSubmitted(true); // <<< SET SUBMITTED TO TRUE HERE
                     setIsFaceDetectionGracePeriod(true); // Start grace period
-                    markTestStart(); // Call backend to mark test start
+                    setIsTimerPaused(false); // <<< RESUME THE TIMER by unpausing
+                    //markTestStart(); // Call backend to mark test start
 
 
                 };
@@ -1321,7 +1343,7 @@ const Form = () => {
 
             // const videoTrack = stream.getVideoTracks()[0];
             videoTrack.onended = () => {
-                console.log("Screen sharing ended");
+                console.log("Screen sharing ended by user or system.");
                 setIsScreenSharingStopped(true); // Set flag first
                 handleStopSharingViolation();
             };
@@ -1330,6 +1352,14 @@ const Form = () => {
             // Don't set submitted=true if permission denied
             setShowPermissionError(true);
             setIsFaceDetectionGracePeriod(false); 
+            // If screen share fails, ensure timer isn't left in a paused state if it was about to start
+            if(isResumingAfterPause)
+            {
+                setIsTimerPaused(true); // Pause the timer if it was paused before
+            }
+            else { // Or if it was the initial attempt and timer was about to start
+                setIsTimerPaused(false);
+            }
             // Ensure camera state is consistent if screen share fails
             if (isCameraOn) {
                 console.log("Screen share failed, ensuring initial camera is stopped.");
@@ -1339,11 +1369,16 @@ const Form = () => {
     };
 
     const handleStopSharingViolation = () => {
-        if (isTimeOver) {
-            console.log("Screen sharing stopped after time over. Ignoring violation.");
+        // if (isTimeOver) {
+        //     console.log("Screen sharing stopped after time over. Ignoring violation.");
+        //     return;
+        // }
+        if (isTimeOver || isTestEffectivelyOver) { // Added isTestEffectivelyOver
+            console.log("Screen sharing stopped after time over or test effectively over. Ignoring violation.");
             return;
         }
         console.log("Violation detected: Screen sharing stopped");
+        setIsTimerPaused(true);
         // Stop the stream tracks if they exist
         if (mediaStream) {
             mediaStream.getTracks().forEach((track) => track.stop());
