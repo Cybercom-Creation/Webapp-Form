@@ -120,7 +120,16 @@ const Form = () => {
     const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
-     const isAudioMonitoringActive = applicationSettings && applicationSettings.noiseDetectionEnabled && submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver && !settingsLoading;
+     //const isAudioMonitoringActive = applicationSettings && applicationSettings.noiseDetectionEnabled && submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver && !settingsLoading;
+     const isTestActiveForProctoring = submitted && 
+     userId && 
+     !isTimeOver && 
+     !isTestEffectivelyOver && 
+     !settingsLoading && 
+     applicationSettings;
+
+const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings.noiseDetectionEnabled;
+
      const {
          isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
          currentDecibels, // Optional: for debugging/display
@@ -883,24 +892,30 @@ const Form = () => {
     // --- Face Detection Logging/Warning Trigger (REFINED LOGIC) ---
     useEffect(() => {
         const currentTime = Date.now(); // Moved up
-        const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
- 
+        //const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
+ // Revised condition for when face detection violations should be checked
+ const isActiveTestPhaseForFaceDetection = 
+ isTestActiveForProctoring && // General active test state
+ applicationSettings.liveVideoStreamEnabled && // Live video must be enabled for face detection
+ isCameraOn && 
+ isVideoReady && 
+ !isFaceDetectionGracePeriod;
         // --- ADD LOGGING HERE ---
-        console.log('[Face Check Effect START]', {
-            isActiveTestPhase,
-            numberOfFacesDetected,
-            currentWarningType, // Log the current warning type *before* this effect potentially changes it
-            isLookingAway,      // <-- Log the value received from the hook
-            showWarning,        // Log if warning is currently shown
-            noFaceStartTime: noFaceStartTime !== null,
-            lookingAwayStartTime: lookingAwayStartTime !== null, // <-- Log new timer
-            multipleFaceStartTime: multipleFaceStartTime !== null,
-            isTestEffectivelyOver, // Log this new state
-            isFaceDetectionGracePeriod,
-        });
+        // console.log('[Face Check Effect START]', {
+        //     isActiveTestPhase,
+        //     numberOfFacesDetected,
+        //     currentWarningType, // Log the current warning type *before* this effect potentially changes it
+        //     isLookingAway,      // <-- Log the value received from the hook
+        //     showWarning,        // Log if warning is currently shown
+        //     noFaceStartTime: noFaceStartTime !== null,
+        //     lookingAwayStartTime: lookingAwayStartTime !== null, // <-- Log new timer
+        //     multipleFaceStartTime: multipleFaceStartTime !== null,
+        //     isTestEffectivelyOver, // Log this new state
+        //     isFaceDetectionGracePeriod,
+        // });
  
         // --- Handle Active Test Phase ---
-        if (isActiveTestPhase) {
+        if (isActiveTestPhaseForFaceDetection) {
             let newWarningType = null; // What the warning *should* be based on faces
             let faceViolationActive = false;
  
@@ -1051,7 +1066,9 @@ const Form = () => {
         // Include functions/setters called
         sendProctoringLog,
         isTestEffectivelyOver, // Added dependency
-        setNoFaceStartTime,
+        //setNoFaceStartTime,
+        // isTestActiveForProctoring, // Added
+        // applicationSettings, // Added
         setMultipleFaceStartTime,
         setWarningStartTime, setShowWarning, setCurrentWarningType,
         setLookingAwayStartTime, // <-- Include new setter
@@ -1101,7 +1118,8 @@ const Form = () => {
     // --- Visibility Change Listener (Unchanged Logic) ---
     // ... (No changes needed here)
     useEffect(() => {
-        if (submitted && userId && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
+         // if (submitted && userId && mediaStream && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
+            if(isTestActiveForProctoring){
             const handleVisibilityChange = () => {
                 if (document.hidden) {
                     console.log("Violation detected: Tab switched");
@@ -1114,7 +1132,8 @@ const Form = () => {
             document.addEventListener('visibilitychange', handleVisibilityChange);
             return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
-    }, [submitted, userId, mediaStream, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
+    //}, [submitted, userId, mediaStream, isTimeOver, isTestEffectivelyOver]); // Added isTestEffectivelyOver
+}, [isTestActiveForProctoring]);
 
     // --- NEW: Effect to handle page unload during active test ---
     useEffect(() => {
