@@ -358,14 +358,27 @@ const Form = () => {
                     console.log('WebSocket message received:', data);
 
                     // Listen for the specific confirmation message from the backend
-                    if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
-                        console.log('Form submission confirmed via WebSocket!');
-                        setCurrentWarningType('form_submitted');
-                        setIsTestEffectivelyOver(true); // Signal that the test is over
-                    } 
+                    // if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
+                    //     console.log('Form submission confirmed via WebSocket!');
+                    //     setCurrentWarningType('form_submitted');
+                    //     setIsTestEffectivelyOver(true); // Signal that the test is over
+                    // } 
                     
                     
-                    else if (data.type === 'IDENTIFIED') {
+                    // else if (data.type === 'IDENTIFIED') {
+
+                    if (data.type === 'FORM_SUBMITTED_CONFIRMED') {
+                        console.log(`FORM_SUBMITTED_CONFIRMED received. Comparing server email ('${data.email}') with local emailId ('${emailId}').`);
+                        if (data.email === emailId) {
+                            console.log('Email match! Form submission confirmed for this user. Setting isTestEffectivelyOver to true.');
+                            // No need to show an intermediate warning popup if we're going straight to the "Test Concluded" screen.
+                            // setCurrentWarningType('form_submitted'); 
+                            // setShowWarning(true); 
+                            setIsTestEffectivelyOver(true); // This will trigger the "Test Session Concluded" view and cleanup.
+                        } else {
+                            console.warn('FORM_SUBMITTED_CONFIRMED received, but data.email does not match local emailId. Ignoring notification for this client.');
+                        }
+                    } else if (data.type === 'IDENTIFIED') {
                         console.log('WebSocket connection successfully identified by server.');
                     }
                     // Handle other message types if needed
