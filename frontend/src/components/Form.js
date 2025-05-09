@@ -282,6 +282,7 @@ const Form = () => {
             periodicScreenshotsEnabled: false,
             screenshotIntervalSeconds: 30,
             testDurationSeconds: 600, // Default to 10 minutes (600 seconds)
+            testDurationInterval: 10, // Default 10 minutes, consistent with backend model
         });
     
         console.log("Attempting to fetch application settings...");
@@ -1767,6 +1768,19 @@ const Form = () => {
     //     'Render State - settingsLoading:', settingsLoading,
     //     'applicationSettings:', JSON.stringify(applicationSettings, null, 2)
     // );
+    // --- Calculate displayMinutes for instructions ---
+
+    let displayMinutes = 10; // Default value if settings are not loaded or field is missing
+    if (applicationSettings) {
+        if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
+            displayMinutes = Number(applicationSettings.testDurationInterval);
+        } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
+            // Fallback to testDurationSeconds if testDurationInterval is not available/valid
+            displayMinutes = Math.floor(Number(applicationSettings.testDurationSeconds) / 60);
+        }
+        // If neither is present and valid from fetched settings, it remains the initial default (10)
+    }
+
 
     // --- JSX Rendering ---
     return (
@@ -2022,7 +2036,7 @@ const Form = () => {
                                 )}
                                 {applicationSettings?.liveVideoStreamEnabled && isCameraOn && !isVideoReady && !cameraError && <p className="camera-placeholder">Initializing...</p>}
                                 {!applicationSettings?.liveVideoStreamEnabled && !settingsLoading && (
-                                    <p className="camera-placeholder">Live video disabled by admin.</p>
+                                    <p className="camera-placeholder"></p>
                                 )}
                                 {/* Show placeholder if camera is OFF */}
                                 {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>}
@@ -2131,7 +2145,7 @@ const Form = () => {
                             {/* Instruction 1 */}
                             <div className="instruction-item">
                                 <input type="checkbox" id="inst1" checked={instructionChecks.inst1} onChange={handleInstructionCheckChange} />
-                                <label htmlFor="inst1">You will have <strong>${Math.floor((applicationSettings?.testDurationSeconds || 600) / 60)} minutes</strong> to complete the test.</label>
+                                <label htmlFor="inst1">You will have <strong> {displayMinutes} minutes</strong> to complete the test.</label>
                             </div>
                             {/* Instruction 2 */}
                             <div className="instruction-item">

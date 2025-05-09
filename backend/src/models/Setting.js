@@ -28,7 +28,11 @@ const settingSchema = new mongoose.Schema({
         type: Number,
         default: 300, // Default to 5 minutes
     },
-    
+    testDurationInterval: { // New field for test duration
+        type: Number,
+        default: 10, // Default to 60 minutes
+        min: 5,      // Minimum test duration (e.g., 5 minutes)
+    }
 }, { timestamps: true }); // Add timestamps to know when settings were last updated
 
 settingSchema.statics.findOrCreate = async function findOrCreate() {

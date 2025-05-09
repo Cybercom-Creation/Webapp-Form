@@ -27,6 +27,7 @@ router.get('/', async (req, res) => {
             userPhotoFeatureEnabled: false,
             periodicScreenshotsEnabled: false,
             screenshotIntervalSeconds: 300,
+            testDurationInterval: 10, // Default to 10 minutes
             error: 'Server error while fetching settings'
         });
     }
@@ -42,7 +43,8 @@ router.patch('/', async (req, res) => {
         noiseDetectionEnabled,
         userPhotoFeatureEnabled,
         periodicScreenshotsEnabled,
-        screenshotIntervalSeconds
+        screenshotIntervalSeconds,
+        testDurationInterval
     } = req.body;
 
     const settingsFields = {};
@@ -51,7 +53,7 @@ router.patch('/', async (req, res) => {
     if (userPhotoFeatureEnabled !== undefined) settingsFields.userPhotoFeatureEnabled = userPhotoFeatureEnabled;
     if (periodicScreenshotsEnabled !== undefined) settingsFields.periodicScreenshotsEnabled = periodicScreenshotsEnabled;
     if (screenshotIntervalSeconds !== undefined) settingsFields.screenshotIntervalSeconds = screenshotIntervalSeconds;
-
+    if (testDurationInterval !== undefined) settingsFields.testDurationInterval = Number(testDurationInterval); 
     console.log('Admin Panel PATCH /api/settings - Constructed settingsFields to update:', settingsFields); // <--- ADD THIS
 
     try {
