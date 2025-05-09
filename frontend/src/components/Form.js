@@ -1696,16 +1696,60 @@ const Form = () => {
     // --- END UPDATED ---
 
     // ... (No changes needed here)
+    // const isSubmitDisabled =
+    //     settingsLoading || // Disable while settings are loading
+    //     isCameraAvailable === null || // Still checking for camera
+    //     !name || !!nameError ||
+    //     !email || !!emailError ||
+    //     !phone || !!phoneError ||
+    //     !isCameraOn || !isVideoReady || // Camera must be fully ready
+    //     numberOfFacesDetected !== 1 || // Exactly one face must be detected
+    //     //isLookingAway || // <-- ADDED: User must be looking straight
+    //     !detectorReady; // Detector must be ready
+
+    // --- Calculate if submit button should be disabled ---
+    const basicFormInvalid = !name || !!nameError || !email || !!emailError || !phone || !!phoneError;
+    let photoChecksFailed = false;
+
+    // These checks are only relevant if the user photo feature is enabled
+    if (applicationSettings?.userPhotoFeatureEnabled) {
+        photoChecksFailed =
+            isCameraAvailable === null ||      // Still checking for camera availability
+            isCameraAvailable === false ||     // Camera check completed and no camera found/error
+            !detectorReady ||                // Face detector must be ready
+            !isCameraOn ||                   // Camera must be on (intended state)
+            !isVideoReady ||                 // Video stream must be ready and playing
+            numberOfFacesDetected !== 1 ||   // Exactly one face must be detected
+            isLookingAway;                   // User must not be looking away
+    }
+
     const isSubmitDisabled =
-        settingsLoading || // Disable while settings are loading
-        isCameraAvailable === null || // Still checking for camera
-        !name || !!nameError ||
-        !email || !!emailError ||
-        !phone || !!phoneError ||
-        !isCameraOn || !isVideoReady || // Camera must be fully ready
-        numberOfFacesDetected !== 1 || // Exactly one face must be detected
-        //isLookingAway || // <-- ADDED: User must be looking straight
-        !detectorReady; // Detector must be ready
+        settingsLoading || // Disable while application settings are loading
+        isLoading ||       // Disable while form is actively submitting to the backend
+        basicFormInvalid || // Basic form fields (name, email, phone) must be valid
+        photoChecksFailed;  // This will be true only if photo feature is enabled AND one of its specific checks failed.
+                            // If photo feature is disabled, photoChecksFailed remains false.
+
+    // --- Determine Submit Button Text ---
+    let submitButtonText = 'Submit Details';
+    if (settingsLoading) {
+        submitButtonText = 'Loading Settings...';
+    } else if (isLoading) {
+        submitButtonText = 'Submitting...';
+    } else if (basicFormInvalid) {
+        submitButtonText = 'Fill Details Correctly';
+    } else if (applicationSettings?.userPhotoFeatureEnabled && photoChecksFailed) {
+        // If photo feature is enabled and a check failed, show a specific reason
+        if (isCameraAvailable === null) submitButtonText = 'Checking Camera...';
+        else if (isCameraAvailable === false) submitButtonText = 'Camera Required';
+        else if (!detectorReady) submitButtonText = 'Loading Detector...';
+        else if (!isCameraOn) submitButtonText = 'Starting Camera...';
+        else if (!isVideoReady) submitButtonText = 'Initializing Camera...';
+        else if (numberOfFacesDetected !== 1) submitButtonText = 'Align Face (1 needed)';
+        else if (isLookingAway) submitButtonText = 'Look Straight';
+    }
+    // If all checks pass (or photo feature is disabled and basic form is valid), text remains 'Submit Details'.
+
 
 
     // --- Calculate if all instruction checkboxes are checked from the state object ---
@@ -1882,7 +1926,7 @@ const Form = () => {
                                     style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
                                 ></video>
                             )}
-                            {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box">User photo capture disabled.</div>}
+                            {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box"></div>}
                             {/* Placeholder when camera is off */}
                             {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
@@ -1903,15 +1947,14 @@ const Form = () => {
                     <button
                         type="submit"
                         className="submit-button"
-                        disabled={isLoading ||isSubmitDisabled} // Use the calculated disabled state
+                        disabled={isSubmitDisabled} // Use the new comprehensive disabled state
                     >
                         {/* Show spinner ONLY when isLoading is true */}
                         {/* {isLoading && <div className="spinner"></div>} */}
 
-                        {/* {isLoading
-                        ? 'Submitting...'  */}
+                        {/* Show spinner if settings are loading or form is submitting */}
                         {(isLoading || settingsLoading) && <div className="spinner"></div>}
-                        {settingsLoading
+                        {/* {settingsLoading
                         ? 'Loading Settings...'
                         : isLoading
                         ? 'Submitting...'
@@ -1933,7 +1976,9 @@ const Form = () => {
                                 : isLookingAway // <-- ADDED: Check for looking away
                                 ? 'Look Straight'
                                 : 'Check Conditions' // Fallback disabled text
-                            : 'Submit Details'}
+                            : 'Submit Details'} */}
+                             {/* Display the determined button text */}
+                        {submitButtonText}
                     </button>
                 </form>
             ) : submitted && !isTestEffectivelyOver && mediaStream ? ( // Test Area (Test Started, Screen Sharing Active, and test not effectively over)

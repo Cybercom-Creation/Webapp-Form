@@ -25,7 +25,7 @@ const UserSchema = new mongoose.Schema({
     },
     photoBase64: { // Store the initial photo captured during registration
         type: String, // Base64 data is a string
-        required: [true, 'Initial photo is required'],
+        required: false,
     },
     photoDriveLink: { type: String },
     // --- NEW FIELDS ---

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User'); // Import the User model
+const Setting = require('../models/Setting'); // Assuming you have this model
 
 // *** Import the Google Drive upload function ***
 const { uploadProfilePhotoToDrive, getUserDriveFolderDetails } = require('../Services/googleDriveService'); // Adjust path if needed
@@ -12,8 +13,18 @@ router.post('/', async (req, res) => {
     try {
         const { name, email, phone, photoBase64 } = req.body;
 
+        // Fetch current application settings
+        const appSettings = await Setting.findOne({ identifier: 'global_settings' });
+
+        // Conditionally require photoBase64 based on settings
+        if (appSettings && appSettings.userPhotoFeatureEnabled) {
+            if (!photoBase64) {
+                return res.status(400).json({ message: 'User photo is required because the photo feature is enabled.' });
+            }
+        }
+
         // Basic validation (Mongoose schema handles more)
-        if (!name || !email || !phone || !photoBase64) {
+        if (!name || !email || !phone ) {
             return res.status(400).json({ message: 'Missing required fields' });
         }
        
@@ -88,19 +99,32 @@ router.post('/', async (req, res) => {
             console.log(`[Routes] No photo data provided for user ${email}. Skipping Drive upload.`);
         }
 
-         // --- Create New User Document ---
-        const newUser = new User({
-            name,
-            email,
-            phone,
-            photoBase64: photoBase64 || null, // Save original base64 or null
-            photoDriveLink: photoUploadResult.link,   // Save the drive link (or null if failed/not provided)
-            driveFolderId: userDriveFolder.id,       // <-- SAVE FOLDER ID
-            driveFolderLink: userDriveFolder.link, // <-- SAVE FOLDER LINK
+        // // --- Create New User Document ---
+        // const newUser = new User({
+        //     name,
+        //     email,
+        //     phone,
+        //     photoBase64: photoBase64 || null, // Save original base64 or null
+        //     photoDriveLink: photoUploadResult.link,   // Save the drive link (or null if failed/not provided)
+        //     driveFolderId: userDriveFolder.id,       // <-- SAVE FOLDER ID
+        //     driveFolderLink: userDriveFolder.link, // <-- SAVE FOLDER LINK
 
-            // createdAt will be added automatically by Mongoose if defined in schema
-        });
+        //     // createdAt will be added automatically by Mongoose if defined in schema
+        // });
 
+        const newUserDetails = { name, email, phone };
+        if (photoBase64) { // Only add photoBase64 if it was provided
+            newUserDetails.photoBase64 = photoBase64;
+        }
+
+        // Add Drive details to the user object
+        newUserDetails.driveFolderId = userDriveFolder.id;
+        newUserDetails.driveFolderLink = userDriveFolder.link;
+        if (photoUploadResult && photoUploadResult.link) {
+            newUserDetails.photoDriveLink = photoUploadResult.link;
+        }
+
+        const newUser = new User(newUserDetails);
         // Save the new user document to MongoDB
         await newUser.save(); // Save the new user document
 
