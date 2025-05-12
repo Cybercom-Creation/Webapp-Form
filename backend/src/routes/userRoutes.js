@@ -49,27 +49,33 @@ router.post('/', async (req, res) => {
 
         // --- 1. Get/Create the SINGLE User Drive Folder ---
         let userDriveFolder = { id: null, link: null };
-        try {
-            console.log(`[Routes] Getting/Creating Drive folder for user: ${name}`);
-            userDriveFolder = await getUserDriveFolderDetails(name); // Use the new function
-            if (userDriveFolder && userDriveFolder.id) {
-                 console.log(`[Routes] User Drive Folder ID: ${userDriveFolder.id}, Link: ${userDriveFolder.link}`);
-            } else {
-                 console.warn(`[Routes] Failed to get user Drive folder details for user ${name}. Proceeding without folder info.`);
-                 userDriveFolder = { id: null, link: null }; // Ensure reset
+        const shouldCreateDriveFolder = appSettings && (appSettings.userPhotoFeatureEnabled || appSettings.screenshotFeatureEnabled);
+        if (shouldCreateDriveFolder) {
+            try {
+                console.log(`[Routes] Getting/Creating Drive folder for user: ${name}`);
+                userDriveFolder = await getUserDriveFolderDetails(name); // Use the new function
+                if (userDriveFolder && userDriveFolder.id) {
+                    console.log(`[Routes] User Drive Folder ID: ${userDriveFolder.id}, Link: ${userDriveFolder.link}`);
+                } else {
+                    console.warn(`[Routes] Failed to get user Drive folder details for user ${name}. Proceeding without folder info.`);
+                    userDriveFolder = { id: null, link: null }; // Ensure reset
+                }
+            } catch (folderError) {
+                console.error('[Routes] Google Drive user folder creation/retrieval failed:', folderError);
+                userDriveFolder = { id: null, link: null }; // Ensure reset on error
+                // Decide if this is critical. For now, proceed but log.
             }
-        } catch (folderError) {
-            console.error('[Routes] Google Drive user folder creation/retrieval failed:', folderError);
-            userDriveFolder = { id: null, link: null }; // Ensure reset on error
-            // Decide if this is critical. For now, proceed but log.
+        }
+        else {
+            console.log(`[Routes] Skipping Drive folder creation for user: ${name} as no relevant features (userPhoto, screenshot) are enabled.`);
         }
         // --- End Folder Creation ---
 
 
 
         // --- Upload Photo to Google Drive ---
-           let photoUploadResult = { id: null, link: null };
-        if (photoBase64 && userDriveFolder.id) { // Only attempt upload if photo data exists
+        let photoUploadResult = { id: null, link: null };
+        if (photoBase64 && userDriveFolder && userDriveFolder.id) { // Only attempt upload if photo data exists
             try {
                 
                 const fileName = `profile_${Date.now()}.jpg`; // Unique filename
