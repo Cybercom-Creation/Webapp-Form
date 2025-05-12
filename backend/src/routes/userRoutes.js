@@ -49,7 +49,7 @@ router.post('/', async (req, res) => {
 
         // --- 1. Get/Create the SINGLE User Drive Folder ---
         let userDriveFolder = { id: null, link: null };
-        const shouldCreateDriveFolder = appSettings && (appSettings.userPhotoFeatureEnabled || appSettings.screenshotFeatureEnabled);
+        const shouldCreateDriveFolder = appSettings && (appSettings.userPhotoFeatureEnabled || appSettings.periodicScreenshotsEnabled);
         if (shouldCreateDriveFolder) {
             try {
                 console.log(`[Routes] Getting/Creating Drive folder for user: ${name}`);
