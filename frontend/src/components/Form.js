@@ -993,7 +993,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         // });
  
         // --- Handle Active Test Phase ---
-        if (isActiveTestPhase) {
+        if (isActiveTestPhaseForFaceDetection) { // Corrected variable name
             //let newWarningType = null; // What the warning *should* be based on faces
             let newFaceIconType = null; // What the icon *should* be based on faces
             let faceViolationActive = false;
@@ -2223,7 +2223,9 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                             )}
                             {/* {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box"></div>} */}
                             {!settingsLoading && applicationSettings && !applicationSettings.userPhotoFeatureEnabled && (
-                                <div className="camera-placeholder-box"><p>User photo capture disabled.</p></div>
+                                <div className="camera-placeholder-box">
+                                    {/* <p>User photo capture disabled.</p> */} {/* Line removed/commented out */}
+                                </div>
                             )}
                             {settingsLoading && <div className="camera-placeholder-box"><p>Loading camera settings...</p></div>}
                             {/* Placeholder when camera is off */}
