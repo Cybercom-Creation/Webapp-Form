@@ -16,12 +16,12 @@ router.post('/', async (req, res) => {
         // Fetch current application settings
         const appSettings = await Setting.findOne({ identifier: 'global_settings' });
 
-        // Conditionally require photoBase64 based on settings
-        if (appSettings && appSettings.userPhotoFeatureEnabled) {
-            if (!photoBase64) {
-                return res.status(400).json({ message: 'User photo is required because the photo feature is enabled.' });
-            }
-        }
+        // // Conditionally require photoBase64 based on settings
+        // if (appSettings && appSettings.userPhotoFeatureEnabled) {
+        //     if (!photoBase64) {
+        //         return res.status(400).json({ message: 'User photo is required because the photo feature is enabled.' });
+        //     }
+        // }
 
         // Basic validation (Mongoose schema handles more)
         if (!name || !email || !phone ) {

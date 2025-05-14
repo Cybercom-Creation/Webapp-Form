@@ -27,6 +27,7 @@ const Form = () => {
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
     //const [cameraError, setCameraError] = useState('');
+    const [iconViolationType, setIconViolationType] = useState(null); // NEW: State for icon violations
     const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false);
 
     // --- State for Camera ---
@@ -182,9 +183,19 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         if (isCameraAvailable === false) {
             console.log(`startCamera (${phase}): Aborting. Initial check found no camera available.`);
             // Ensure the availability error is shown if not already
-            if (!cameraAvailabilityError) {
-                setCameraAvailabilityError('Camera is required to process further.');
+            // if (!cameraAvailabilityError) {
+            //     setCameraAvailabilityError('Camera is required to process further.');
+            // }
+            // Set an operational cameraError to be displayed by UI elements that show cameraError
+            // This helps distinguish from the general cameraAvailabilityError on the initial form.
+            if (phase === 'initial' && applicationSettings?.userPhotoFeatureEnabled) {
+                 //setCameraError('Photo capture unavailable: No camera detected on your device.');
+            } else if (phase === 'test' && applicationSettings?.liveVideoStreamEnabled) {
+                 //setCameraError('Live video unavailable: No camera detected on your device.');
             }
+            // Ensure camera state reflects it's not on
+            setIsCameraOn(false);
+            setIsVideoReady(false);
             return; // Don't try to start if check failed
         }
         // --- END ADDED ---
@@ -241,7 +252,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         }
     // Dependencies: detectorReady (condition), stopCamera (internal safety net)
     // Avoid isCameraOn/cameraStream here to break loops, rely on check inside.
-    }, [detectorReady, stopCamera, isCameraAvailable, cameraAvailabilityError]);
+    }, [detectorReady, stopCamera, isCameraAvailable, applicationSettings]);
 
 
     // --- NEW Effect: Initial Camera Availability Check ---
@@ -268,13 +279,16 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     } else {
                         console.warn("Effect (Camera Check): No camera detected.");
                         setIsCameraAvailable(false);
-                        setCameraAvailabilityError('Camera is required to process further.');
+                        //setCameraAvailabilityError('Camera is required to process further.');
+                         setCameraAvailabilityError('No camera hardware detected. Features requiring a camera (like photo capture or live video, if enabled) will be unavailable.');
                     }
                 } catch (err) {
                     console.error("Effect (Camera Check): Error enumerating devices:", err);
                     setIsCameraAvailable(false);
                     // Provide a slightly different error for enumeration issues vs. not found
-                    setCameraAvailabilityError('Could not check for camera. Please ensure permissions are allowed if prompted previously.');
+                    //setCameraAvailabilityError('Could not check for camera. Please ensure permissions are allowed if prompted previously.');
+                    setCameraAvailabilityError('Could not check for camera. Features requiring a camera may be unavailable.');
+                    
                 }
             };
 
@@ -429,10 +443,18 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         }
 
         // Start only if: form not submitted, detector ready, camera not on, AND user photo feature is enabled
-        if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled) {
-            console.log(">>> Effect 1: Conditions met (including userPhotoFeatureEnabled). Calling startCamera('initial').");
+        // if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled) {
+        //     console.log(">>> Effect 1: Conditions met (including userPhotoFeatureEnabled). Calling startCamera('initial').");
+        //     startCamera('initial'); // Pass phase for logging
+        // AND camera is confirmed available. startCamera itself also checks isCameraAvailable.
+        if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled && isCameraAvailable === true) {
+            console.log(">>> Effect 1: Conditions met (userPhotoFeatureEnabled, camera available). Calling startCamera('initial').");
             startCamera('initial'); // Pass phase for logging
-        } else if (!submitted && detectorReady && !isCameraOn && !applicationSettings.userPhotoFeatureEnabled) {
+        }
+        else if (!submitted && applicationSettings.userPhotoFeatureEnabled && isCameraAvailable === false) {
+            console.log(">>> Effect 1: User photo feature enabled, but camera NOT available. Initial camera will not be started. cameraAvailabilityError should be displayed.");
+        } 
+        else if (!submitted && detectorReady && !isCameraOn && !applicationSettings.userPhotoFeatureEnabled) {
             console.log(">>> Effect 1: User photo feature disabled by settings. Initial camera will not be started.");
         }
         // // Start only if: form not submitted, detector ready, AND camera isn't already on.
@@ -441,7 +463,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         //     startCamera('initial'); // Pass phase for logging
         // }
         // NO cleanup function here to stop the camera.
-    }, [submitted, detectorReady, isCameraOn, startCamera, applicationSettings, settingsLoading]); // Depends on conditions and the start function itself
+    }, [submitted, detectorReady, isCameraOn, startCamera, applicationSettings, settingsLoading, isCameraAvailable]); // Depends on conditions and the start function itself
 
 
     // --- Effect 2: Stop Initial Camera on Submission or Unmount ---
@@ -775,34 +797,74 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
         if (applicationSettings && applicationSettings.userPhotoFeatureEnabled) {
             // 2. Check camera/face state if photo capture is enabled
-            if (!isCameraOn || !isVideoReady) {
-                setError('Camera is not ready for photo capture. Please wait or check permissions.');
-                setIsLoading(false);
-                return;
-            }
-            if (numberOfFacesDetected !== 1) {
-                setError('Please ensure exactly one face is clearly visible for the photo.');
-                setIsLoading(false);
-                return;
-            }
-            if (isLookingAway) {
-                setError('Please look straight into the screen for the photo.');
-                setIsLoading(false);
-                return;
-            }
+            // if (!isCameraOn || !isVideoReady) {
+            //     setError('Camera is not ready for photo capture. Please wait or check permissions.');
+            //     setIsLoading(false);
+            //     return;
+            // }
+            // if (numberOfFacesDetected !== 1) {
+            //     setError('Please ensure exactly one face is clearly visible for the photo.');
+            //     setIsLoading(false);
+            //     return;
+            // }
+            // if (isLookingAway) {
+            //     setError('Please look straight into the screen for the photo.');
+            //     setIsLoading(false);
+            //     return;
+            // }
 
-            // 3. Capture the face photo NOW
-            console.log("handleSubmit: User photo feature enabled. Attempting to capture face photo...");
-            const captureResult = captureCurrentFaceBase64();
+            // // 3. Capture the face photo NOW
+            // console.log("handleSubmit: User photo feature enabled. Attempting to capture face photo...");
+            // const captureResult = captureCurrentFaceBase64();
 
-            if (captureResult.error || !captureResult.photoBase64) {
-                setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
-                console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
+            // if (captureResult.error || !captureResult.photoBase64) {
+            //     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
+            //     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
+            //     setIsLoading(false);
+            //     return;
+            // }
+            // capturedPhotoBase64 = captureResult.photoBase64;
+            // console.log("handleSubmit: Face photo captured successfully.");
+            if (isCameraAvailable === true) { // Only attempt capture if camera is available
+                // 2. Check camera/face state if photo capture is enabled AND camera available
+                if (!isCameraOn || !isVideoReady) {
+                    setError('Camera is not ready for photo capture. Please wait or check permissions.');
+                    setIsLoading(false);
+                    return;
+                }
+                if (numberOfFacesDetected !== 1) {
+                    setError('Please ensure exactly one face is clearly visible for the photo.');
+                    setIsLoading(false);
+                    return;
+                }
+                if (isLookingAway) {
+                    setError('Please look straight into the screen for the photo.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                // 3. Capture the face photo NOW
+                console.log("handleSubmit: User photo feature enabled and camera available. Attempting to capture face photo...");
+                const captureResult = captureCurrentFaceBase64();
+
+                if (captureResult.error || !captureResult.photoBase64) {
+                    setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
+                    console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
+                    setIsLoading(false);
+                    return;
+                }
+                capturedPhotoBase64 = captureResult.photoBase64;
+                console.log("handleSubmit: Face photo captured successfully.");
+            } else if (isCameraAvailable === false) {
+                console.log("handleSubmit: User photo feature enabled, but no camera is available. Proceeding with submission, photo will be skipped.");
+                // The cameraAvailabilityError message on the form should inform the user.
+            } else { 
+                // isCameraAvailable is null (still checking) - this case should be blocked by isSubmitDisabled
+                setError('Camera availability is still being checked. Please wait.');
                 setIsLoading(false);
+                //console.log("handleSubmit: User photo feature enabled, but camera availability is still being checked.");
                 return;
             }
-            capturedPhotoBase64 = captureResult.photoBase64;
-            console.log("handleSubmit: Face photo captured successfully.");
         } else {
             console.log("handleSubmit: User photo feature is DISABLED by settings. Skipping photo capture.");
         }
@@ -812,10 +874,22 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         // 4. Prepare data and submit
         // const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
         const userDetails = { name, email, phone };
-        if (capturedPhotoBase64) { // Only add if captured
+        // if (capturedPhotoBase64) { // Only add if captured
+        let logMessage = "Submitting user details...";
+
+        // Add photo only if feature enabled, camera was available, AND photo was successfully captured.
+        if (applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === true && capturedPhotoBase64) {
             userDetails.photoBase64 = capturedPhotoBase64;
+            logMessage = "Submitting user details with captured photo...";
         }
-        console.log("Submitting form with captured photo...");
+        else if (applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === false) {
+            logMessage = "Submitting user details (user photo feature enabled, but no camera; photo skipped)...";
+        } else if (!applicationSettings?.userPhotoFeatureEnabled) {
+            logMessage = "Submitting user details (user photo feature disabled)...";
+        }
+        console.log(logMessage, userDetails);
+
+        //console.log("Submitting form with captured photo...");
 
         try {
             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users`, {
@@ -830,6 +904,10 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             if (!response.ok) {
                 let errorMessage = `Form submission failed (Status: ${response.status})`;
                 try { errorMessage = JSON.parse(responseBody).message || errorMessage; } catch (parseErr) { errorMessage = responseBody || errorMessage; }
+                // If backend returns 400 due to missing photo when feature is enabled, this is where it will be caught.
+                if (response.status === 400 && applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === false && !userDetails.photoBase64) {
+                    console.warn("Backend rejected submission (400). This might be due to the 'User Photo Feature' being enabled but no photo provided (due to no camera). Backend may need adjustment to allow this.");
+                }
                 throw new Error(errorMessage);
             }
 
@@ -915,14 +993,16 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         // });
  
         // --- Handle Active Test Phase ---
-        if (isActiveTestPhaseForFaceDetection) {
-            let newWarningType = null; // What the warning *should* be based on faces
+        if (isActiveTestPhase) {
+            //let newWarningType = null; // What the warning *should* be based on faces
+            let newFaceIconType = null; // What the icon *should* be based on faces
             let faceViolationActive = false;
  
             // --- Determine current face violation state ---
             if (numberOfFacesDetected === 0) {
                 faceViolationActive = true;
-                newWarningType = 'no_face';
+                //newWarningType = 'no_face';
+                newFaceIconType = 'no_face';
                 if (noFaceStartTime === null) {
                     setNoFaceStartTime(currentTime); // Start timer for this specific violation
                     console.log("VIOLATION TRIGGER: No Face Detected - Timer Started");
@@ -940,7 +1020,8 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 }
             } else if (numberOfFacesDetected > 1) {
                 faceViolationActive = true;
-                newWarningType = 'multiple_face';
+                //newWarningType = 'multiple_face';
+                newFaceIconType = 'multiple_face';
                 if (multipleFaceStartTime === null) {
                     setMultipleFaceStartTime(currentTime); // Start timer
                     console.log("VIOLATION TRIGGER: Multiple Faces Detected - Timer Started");
@@ -956,25 +1037,26 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
                     setLookingAwayStartTime(null);
                 }
-            // } else if (isLookingAway) { // <-- NEW: Check for looking away (only if 1 face is detected)
-            //     console.log("[Face Check Effect] Condition MET: isLookingAway is true"); // DEBUG
-            //     faceViolationActive = true;
-            //     newWarningType = 'looking_away';
-            //     if (lookingAwayStartTime === null) {
-            //         setLookingAwayStartTime(currentTime); // Start timer
-            //         console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
-            //     }
-            //     // Clear other face timers if they were running
-            //     if (noFaceStartTime !== null) {
-            //         console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
-            //         sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
-            //         setNoFaceStartTime(null);
-            //     }
-            //     if (multipleFaceStartTime !== null) {
-            //         console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
-            //         sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
-            //         setMultipleFaceStartTime(null);
-            //     }
+            // } else if (isLookingAway) { // <-- REMOVING: Check for looking away
+                // console.log("[Face Check Effect] Condition MET: isLookingAway is true"); 
+                // faceViolationActive = true;
+                // //newWarningType = 'looking_away';
+                // newFaceIconType = 'looking_away';
+                // if (lookingAwayStartTime === null) {
+                //     setLookingAwayStartTime(currentTime); // Start timer
+                //     console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
+                // }
+                // // Clear other face timers if they were running
+                // if (noFaceStartTime !== null) {
+                //     console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
+                //     sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
+                //     setNoFaceStartTime(null);
+                // }
+                // if (multipleFaceStartTime !== null) {
+                //     console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
+                //     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
+                //     setMultipleFaceStartTime(null);
+                // }
             } else { // numberOfFacesDetected === 1 AND not looking away (Normal)
                 // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
@@ -987,28 +1069,39 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
-                if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
-                    console.log("LOG EVENT DURATION END: Looking Away (transition to 1, looking forward)");
-                    sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
-                    setLookingAwayStartTime(null);
-                }
+                // if (lookingAwayStartTime !== null) { // <-- REMOVING: Clear looking away timer
+                //     console.log("LOG EVENT DURATION END: Looking Away (transition to 1, looking forward)");
+                //     sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+                //     setLookingAwayStartTime(null);
+                // }
                 // Only reset general warning if it was a face-related one
-                if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                    faceViolationActive = false; // Mark as resolved
-                    newWarningType = null; // No face warning needed
+                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
+                //     faceViolationActive = false; // Mark as resolved
+                //     newWarningType = null; // No face warning needed
+                // If an icon was shown for a face violation, clear it now
+                if (iconViolationType === 'no_face' || iconViolationType === 'multiple_face' || iconViolationType === 'looking_away') {
+                    setIconViolationType(null);
+                    // currentWarningType should be null if it was for an icon, or related to tab_switch/incorrect_screen_share
                 }
             }
             // --- Update General Warning State ---
-            if (faceViolationActive) {
-                if (!showWarning || (currentWarningType !== newWarningType)) { // Show if not shown, or if type changes
-                    console.log(`Setting/Updating general warning for face violation: ${newWarningType}`);
-                    setWarningStartTime(currentTime); // Set/Update general warning start time
-                    setCurrentWarningType(newWarningType);
-                    setShowWarning(true);
-                }
-                // If the warning *is* already shown for the *correct* face violation type, do nothing to avoid loops.
-                else if (showWarning && currentWarningType === newWarningType) {
-                     console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
+            // if (faceViolationActive) {
+            //     if (!showWarning || (currentWarningType !== newWarningType)) { // Show if not shown, or if type changes
+            //         console.log(`Setting/Updating general warning for face violation: ${newWarningType}`);
+            //         setWarningStartTime(currentTime); // Set/Update general warning start time
+            //         setCurrentWarningType(newWarningType);
+            //         setShowWarning(true);
+            //     }
+            //     // If the warning *is* already shown for the *correct* face violation type, do nothing to avoid loops.
+            //     else if (showWarning && currentWarningType === newWarningType) {
+            //          console.log(`Face violation (${newWarningType}) continues, warning already shown.`);
+            if (newFaceIconType) {
+                if (iconViolationType !== newFaceIconType) {
+                    setIconViolationType(newFaceIconType);
+                    setShowWarning(false); // Ensure popup is not shown for face violations
+                    setCurrentWarningType(null); // Ensure popup doesn't show stale message
+                    // The specific start times (noFaceStartTime, etc.) are used for logging duration.
+                    // General warningStartTime is not needed here if specific timers are used.
                 }
             } else { // Face condition is normal (1 face)
                 // // If the warning *was* for a face violation that is now resolved, hide it.
@@ -1037,12 +1130,15 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                  if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                 setMultipleFaceStartTime(null);
             }
-            if (lookingAwayStartTime !== null) { // <-- Clear looking away timer
-                console.log("LOG EVENT DURATION END: Looking Away (test inactive/prereq failed)");
-                if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
-                setLookingAwayStartTime(null);
+            // if (lookingAwayStartTime !== null) { // <-- REMOVING: Clear looking away timer
+            //     console.log("LOG EVENT DURATION END: Looking Away (test inactive/prereq failed)");
+            //     if (userId) sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
+            //     setLookingAwayStartTime(null);
+            // }
+            // Clear icon if test is not active
+            if (iconViolationType === 'no_face' || iconViolationType === 'multiple_face' || iconViolationType === 'looking_away') {
+                setIconViolationType(null);
             }
- 
         }
  
     }, [
@@ -1059,7 +1155,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         // (React handles this, but explicit inclusion can clarify intent)
         noFaceStartTime,
         multipleFaceStartTime,
-        lookingAwayStartTime, // <-- Include new timer state
+        // lookingAwayStartTime, // <-- REMOVING
         isLookingAway, // <-- Include pose status
         showWarning, // Needed to decide *if* we need to update/hide
         currentWarningType, // Needed to decide *if* we need to update/hide
@@ -1070,8 +1166,8 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         // isTestActiveForProctoring, // Added
         // applicationSettings, // Added
         setMultipleFaceStartTime,
-        setWarningStartTime, setShowWarning, setCurrentWarningType,
-        setLookingAwayStartTime, // <-- Include new setter
+        setWarningStartTime, setShowWarning, setCurrentWarningType
+        // setLookingAwayStartTime, // <-- REMOVING
     ]);
  
 
@@ -1124,6 +1220,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 if (document.hidden) {
                     console.log("Violation detected: Tab switched");
                     setWarningStartTime(Date.now());
+                    setIconViolationType(null); // Ensure icon is hidden when overlay is shown
                     setCurrentWarningType('tab_switch'); // Set type for warning message
                     setIsScreenSharingStopped(false); // Ensure this is false for tab switch
                     setShowWarning(true);
@@ -1172,7 +1269,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         if (submitted && userId && !isTimeOver && !isTestEffectivelyOver) { // Added !isTestEffectivelyOver
             window.addEventListener('beforeunload', handleBeforeUnload);
             console.log("<<< beforeunload listener added for active test >>>");
-
+            setIconViolationType(null); // Ensure icon is hidden if user tries to leave
             // Return a cleanup function to remove the listener
             return () => {
                 window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -1278,13 +1375,14 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             // Start test camera if live video is enabled
             if (applicationSettings.liveVideoStreamEnabled) {
                 console.log('handleAgreeAndStartTest: Live video enabled. Starting test camera...');
-                try {
-                    await startCamera('test');
-                } catch (startError) {
-                    console.error('handleAgreeAndStartTest: Error starting test camera:', startError);
-                    setCameraError("Failed to start camera for the test. Please try again.");
-                    return; // Don't proceed if camera fails
-                }
+                // try {
+                //     await startCamera('test');
+                // } catch (startError) {
+                //     console.error('handleAgreeAndStartTest: Error starting test camera:', startError);
+                //     setCameraError("Failed to start camera for the test. Please try again.");
+                //     return; // Don't proceed if camera fails
+                await startCamera('test'); // Wait for startCamera to attempt acquisition
+            //  }
             } else {
                 console.log('handleAgreeAndStartTest: Live video disabled. Test camera will not be started.');
                 if (isCameraOn) stopCamera(); // Ensure camera is off
@@ -1412,17 +1510,21 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         console.log('requestScreenCapture (setTimeout): Live video stream enabled. Attempting startCamera("test")...');
                         try {
                             await startCamera('test'); // Wait for startCamera to attempt acquisition
+                            // If startCamera fails (e.g. no camera), it sets cameraError.
+                            // The test continues; UI will show the error or "unavailable".
                             console.log('requestScreenCapture (setTimeout): startCamera("test") initiated (async).');
                         } catch (startError) {
+                            // This catch is for errors *during the call itself*, not async errors from getUserMedia.
+                            // startCamera handles its own errors by setting cameraError state.
                             console.error('requestScreenCapture (setTimeout): Error occurred *during* the call to startCamera("test"):', startError);
                             setCameraError("Failed to restart camera for the test. Please try again.");
                             // Stop screen sharing if camera fails to start for test
                             //if (stream) stream.getTracks().forEach(track => track.stop());
-                            stream.getTracks().forEach(track => track.stop());
-                            setMediaStream(null);
+                            //stream.getTracks().forEach(track => track.stop());
+                            //setMediaStream(null);
                             // Do not proceed to setSubmitted(true)
-                            setShowInstructions(true); // Go back to instructions or show error
-                            return; // Exit to prevent setting submitted
+                            //setShowInstructions(true); // Go back to instructions or show error
+                            //return; // Exit to prevent setting submitted
                         }
                     } else {
                         console.log('requestScreenCapture (setTimeout): Live video stream is DISABLED by settings. Camera will not be started for test.');
@@ -1483,6 +1585,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         if (isTimeOver || isTestEffectivelyOver) { // Added isTestEffectivelyOver
             console.log("Screen sharing stopped after time over or test effectively over. Ignoring violation.");
             return;
+            setIconViolationType(null); // Ensure icon is cleared if test ends
         }
         console.log("Violation detected: Screen sharing stopped");
         setIsTimerPaused(true);
@@ -1491,10 +1594,14 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             mediaStream.getTracks().forEach((track) => track.stop());
         }
         setMediaStream(null); // Clear the state
-        setWarningStartTime(Date.now());
-        setCurrentWarningType('screenshare_stop'); // Set type
+        // setWarningStartTime(Date.now());
+        // setCurrentWarningType('screenshare_stop'); // Set type
+        setWarningStartTime(Date.now()); // Keep for logging duration
+        setIconViolationType('screenshare_stop'); // Set icon type
         // isScreenSharingStopped is already set true by onended handler
-        setShowWarning(true);
+        setShowWarning(false); // Ensure overlay is hidden
+        setCurrentWarningType(null); // Ensure popup doesn't show a stale message
+        setShowScreenShareRequiredError(true); // Directly show the re-share prompt
     };
 
 
@@ -1652,6 +1759,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             firstNoiseViolationInSequenceTimestampRef.current = null;
             lastNoiseViolationTimestampRef.current = null;
             // console.log("[Noise Effect] Monitoring stopped, resetting counters.");
+            setIconViolationType(null); // Ensure icon is hidden if monitoring stops
             // Ensure warning is hidden if monitoring stops
             if (showWarning && currentWarningType === 'high_noise') {
                  setShowWarning(false);
@@ -1709,9 +1817,14 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         console.warn(`   [Alert Condition Met] ${consecutiveNoiseCountRef.current} violations within ${timeSinceFirst}ms.`);
 
                         // Show warning only if not already showing this specific warning
-                        if (!showWarning || currentWarningType !== 'high_noise') {
-                            console.log("   Triggering 'high_noise' warning popup.");
-                            setShowWarning(true);
+                        // if (!showWarning || currentWarningType !== 'high_noise') {
+                        //     console.log("   Triggering 'high_noise' warning popup.");
+                        //     setShowWarning(true);
+                        // Trigger icon only if not already showing this specific icon
+                        if (iconViolationType !== 'high_noise') {
+                            console.log("   Triggering 'high_noise' icon.");
+                            setIconViolationType('high_noise');
+                            setShowWarning(false); // Ensure overlay is hidden
                             setCurrentWarningType('high_noise');
                             // Set warning start time only when it *first* triggers
                             if (!warningStartTime) { // Or check if currentWarningType was different
@@ -1742,12 +1855,18 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     // (The close button logic already handles preventing closure while noise is high)
                     // This handles hiding it automatically if noise stays low long enough.
                     if (showWarning && currentWarningType === 'high_noise') {
-                        console.log("Hiding 'high_noise' warning due to inactivity reset.");
+                       console.log("Hiding 'high_noise' popup (should be icon) due to inactivity reset.");
                         setShowWarning(false);
                         setCurrentWarningType(null);
                         setWarningStartTime(null);
                     }
+                    // Clear icon if it was for high_noise
+                    if (iconViolationType === 'high_noise') {
+                        setIconViolationType(null);
+                        // warningStartTime for high_noise would be cleared when logging its duration if needed
+                    }
                 }
+                  
                 // else: Noise is low, but not for long enough to reset yet. Do nothing.
             }
             // else: Noise is low, and no sequence was active. Do nothing.
@@ -1852,27 +1971,39 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
     // --- Calculate if submit button should be disabled ---
     const basicFormInvalid = !name || !!nameError || !email || !!emailError || !phone || !!phoneError;
-    let photoChecksFailed = false;
-
+    //let photoChecksFailed = false;
+    let photoChecksFailedAndRequired = false; // Renamed for clarity
     // These checks are only relevant if the user photo feature is enabled
     if (applicationSettings?.userPhotoFeatureEnabled) {
-        photoChecksFailed =
-            isCameraAvailable === null ||      // Still checking for camera availability
-            isCameraAvailable === false ||     // Camera check completed and no camera found/error
-            !detectorReady ||                // Face detector must be ready
-            !isCameraOn ||                   // Camera must be on (intended state)
-            !isVideoReady ||                 // Video stream must be ready and playing
-            numberOfFacesDetected !== 1 ||   // Exactly one face must be detected
-            isLookingAway;                   // User must not be looking away
+        // photoChecksFailed =
+        //     isCameraAvailable === null ||      // Still checking for camera availability
+        //     isCameraAvailable === false ||     // Camera check completed and no camera found/error
+        //     !detectorReady ||                // Face detector must be ready
+        //     !isCameraOn ||                   // Camera must be on (intended state)
+        //     !isVideoReady ||                 // Video stream must be ready and playing
+        //     numberOfFacesDetected !== 1 ||   // Exactly one face must be detected
+        //     isLookingAway;                   // User must not be looking away
+        if (isCameraAvailable === true) { // Photo capture is attempted, so checks are required if camera IS available
+            photoChecksFailedAndRequired =
+                !detectorReady ||
+                !isCameraOn ||
+                !isVideoReady ||
+                numberOfFacesDetected !== 1 ||
+                isLookingAway;
+        }
+        // If isCameraAvailable === false, photoChecksFailedAndRequired remains false.
+        // Submission is allowed, photo is skipped. cameraAvailabilityError will be shown.
+        // If isCameraAvailable === null, we disable submit separately.
     }
 
     const isSubmitDisabled =
         settingsLoading || // Disable while application settings are loading
         isLoading ||       // Disable while form is actively submitting to the backend
         basicFormInvalid || // Basic form fields (name, email, phone) must be valid
-        photoChecksFailed;  // This will be true only if photo feature is enabled AND one of its specific checks failed.
+        //photoChecksFailed;  // This will be true only if photo feature is enabled AND one of its specific checks failed.
                             // If photo feature is disabled, photoChecksFailed remains false.
-
+        (applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === null) || // Disable if checking camera and photo is a feature
+        photoChecksFailedAndRequired;  // True if photo enabled, camera available, AND operational checks fail.
     // --- Determine Submit Button Text ---
     let submitButtonText = 'Submit Details';
     if (settingsLoading) {
@@ -1881,15 +2012,23 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         submitButtonText = 'Submitting...';
     } else if (basicFormInvalid) {
         submitButtonText = 'Fill Details Correctly';
-    } else if (applicationSettings?.userPhotoFeatureEnabled && photoChecksFailed) {
-        // If photo feature is enabled and a check failed, show a specific reason
-        if (isCameraAvailable === null) submitButtonText = 'Checking Camera...';
-        else if (isCameraAvailable === false) submitButtonText = 'Camera Required';
-        else if (!detectorReady) submitButtonText = 'Loading Detector...';
-        else if (!isCameraOn) submitButtonText = 'Starting Camera...';
-        else if (!isVideoReady) submitButtonText = 'Initializing Camera...';
-        else if (numberOfFacesDetected !== 1) submitButtonText = 'Align Face (1 needed)';
-        else if (isLookingAway) submitButtonText = 'Look Straight';
+    } 
+    else if(applicationSettings?.userPhotoFeatureEnabled)
+    {
+        if (isCameraAvailable === null) {
+            submitButtonText = 'Checking Camera...';
+            } else if (isCameraAvailable === true && photoChecksFailedAndRequired) { 
+            // Photo feature is on, camera IS available, but operational checks fail
+            if (!detectorReady) submitButtonText = 'Loading Detector...';
+            else if (!isCameraOn) submitButtonText = 'Starting Camera...';
+            else if (!isVideoReady) submitButtonText = 'Initializing Camera...';
+            else if (numberOfFacesDetected !== 1) submitButtonText = 'Align Face (1 needed)';
+            else if (isLookingAway) submitButtonText = 'Look Straight';
+        }
+        // If isCameraAvailable === false (no camera), and photo feature is on,
+        // the button text remains 'Submit Details'. The cameraAvailabilityError
+        // message on the form will explain that photo capture will be skipped.
+        // Submission is NOT disabled in this case.
     }
     // If all checks pass (or photo feature is disabled and basic form is valid), text remains 'Submit Details'.
 
@@ -2082,7 +2221,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                     style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
                                 ></video>
                             )}
-                            {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box"></div>}
+                            {/* {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box"></div>} */}
+                            {!settingsLoading && applicationSettings && !applicationSettings.userPhotoFeatureEnabled && (
+                                <div className="camera-placeholder-box"><p>User photo capture disabled.</p></div>
+                            )}
+                            {settingsLoading && <div className="camera-placeholder-box"><p>Loading camera settings...</p></div>}
                             {/* Placeholder when camera is off */}
                             {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
@@ -2170,7 +2313,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                 ></video> */}
                                 {/* Show placeholder if camera is intended ON but not ready/error */}
                                 {/* {isCameraOn && !isVideoReady && !cameraError && !detectorReady && <p className="camera-placeholder">Initializing...</p>} */}
-                                {applicationSettings?.liveVideoStreamEnabled && cameraError && <p className="error-message camera-error">{cameraError}</p>}
+                                {/* {applicationSettings?.liveVideoStreamEnabled && cameraError && <p className="error-message camera-error">{cameraError}</p>}
                                 {applicationSettings?.liveVideoStreamEnabled && (
                                     <video
                                         ref={videoRef}
@@ -2183,13 +2326,68 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                 )}
                                 {applicationSettings?.liveVideoStreamEnabled && isCameraOn && !isVideoReady && !cameraError && <p className="camera-placeholder">Initializing...</p>}
                                 {!applicationSettings?.liveVideoStreamEnabled && !settingsLoading && (
-                                    <p className="camera-placeholder"></p>
+                                    <p className="camera-placeholder"></p> */}
+
+
+
+
+
+
+
+
+
+                                {settingsLoading ? (
+                                    <p className="camera-placeholder">Loading camera settings...</p>
+                                ) : applicationSettings?.liveVideoStreamEnabled ? (
+                                    <>
+                                        {isCameraAvailable === false ? (
+                                            <p className="camera-placeholder">Live video feed unavailable: No camera detected on device.</p>
+                                        ) : cameraError ? (
+                                            <p className="error-message camera-error">{cameraError}</p>
+                                        ) : isCameraOn ? ( // <-- CHANGE HERE: Render video if camera is ON
+                                            <video // Render video element if camera is intended ON
+                                                ref={videoRef}
+                                                autoPlay
+                                                playsInline
+                                                muted
+                                                className={`camera-video ${!isCameraOn || !isVideoReady ? 'hidden' : ''}`}
+                                                style={{ transform: 'scaleX(-1)' }}
+                                            ></video>
+                                        ) : (
+                                            // Fallback if camera should be on but isn't (e.g., startCamera not called yet, or silently failed after being available)
+                                            // This also covers if isCameraAvailable is null initially.
+                                            // If isCameraOn is false, this branch won't be hit due to the parent condition.
+                                            <p className="camera-placeholder">Camera feed starting or unavailable.</p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <p className="camera-placeholder">Live camera feed disabled by admin settings.</p>
+
+
+
+                                
                                 )}
                                 {/* Show placeholder if camera is OFF */}
                                 {/* {!isCameraOn && !cameraError && <p className="camera-placeholder">Camera off</p>} */}
+                                {/* --- NEW: Violation Icon --- */}
+                                {iconViolationType && (
+                                    <div className={`violation-icon ${iconViolationType}`}>
+                                        {/* You can use an actual icon font/SVG here */}
+                                        {/* Example: Using a simple exclamation mark */}
+                                        !
+                                    </div>
+                                )}
+                                {/* --- END NEW --- */}
+
                             </div>
                             {/* Display Audio Setup Error if present */}
-                            {audioSetupError && <p className="error-message audio-error">{audioSetupError}</p>}
+                            {/* {audioSetupError && <p className="error-message audio-error">{audioSetupError}</p>} */}
+                            {applicationSettings?.noiseDetectionEnabled && audioSetupError && (
+                                <p className="error-message audio-error">
+                                    Audio monitoring issue: {audioSetupError}. Test will continue without this feature.
+                                </p>
+                            )}
+
                             {/* Optional: Display current decibel level for debugging */}
                             {/* {isAudioMonitoring && <p>Audio Level: {currentDecibels.toFixed(1)} dBFS</p>} */}
                         </div>
@@ -2409,17 +2607,23 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         <h2>
                             {currentWarningType === 'form_submitted' ? 'Submission Confirmed' : 'Warning'}
                         </h2>
+                        {/* --- MODIFIED: Warning message based on currentWarningType --- */}
                         <p>
                             {currentWarningType === 'form_submitted' ? (
                                 'Your Google Form submission has been successfully recorded.'
                             ) : (
                                 `Violation detected. Please do not ${
                                     currentWarningType === 'tab_switch' ? 'switch tabs or minimize the browser' :
-                                    currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
-                                    currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
-                                    currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
+                                    //currentWarningType === 'screenshare_stop' ? 'stop screen sharing' :
+                                    // These types now use the icon, but keep the message here in case they were somehow set to the popup
+                                    //currentWarningType === 'no_face' || currentWarningType === 'multiple_face' ? 'leave the camera view or allow others in the camera view' :
+                                    // currentWarningType === 'no_face' ? 'leave the camera view or obscure your face' :
+                                    // currentWarningType === 'multiple_face' ? 'allow others in the camera view' :
                                     // currentWarningType === 'looking_away' ? 'look straight at the screen' : 
-                                    currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : 
+                                    // currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' : 
+                                    // 'violate the test rules'
+                                    //currentWarningType === 'high_noise' ? 'make excessive noise or ensure a quiet environment' :
+                                    //currentWarningType === 'incorrect_screen_share' ? 'share the incorrect screen (please share the browser tab)' :
                                     'violate the test rules'
                                 } again.`
                             )}
@@ -2439,36 +2643,39 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                  let blockReason = ''; // To store why it's blocked
 
                                  // Check if it's a face violation and if it's still active
-                                 if (currentWarningType === 'no_face') {
-                                     if (numberOfFacesDetected === 0) { // No face violation still active
-                                         allowClose = false;
-                                         blockReason = 'Please ensure your face is visible to close this warning.';
-                                         console.log("Close button clicked, but 'no_face' violation persists. Preventing close.");
-                                         // Optionally, add brief visual feedback like shaking the popup slightly? (More complex UI task)
-                                     }
-                                 } else if (currentWarningType === 'multiple_face') {
-                                     if (numberOfFacesDetected > 1) { // Multiple faces violation still active
-                                         allowClose = false;
-                                         blockReason = 'Please ensure only one face is visible to close this warning.';
-                                         console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
-                                     }
-                                 }
-                                 else if (currentWarningType === 'high_noise') {
-                                     if (isNoiseLevelHigh) { // High noise violation still active
-                                         allowClose = false;
-                                        blockReason = 'Please ensure a quiet environment to close this warning.';
-                                        console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
-                                    }
-                                // } else if (currentWarningType === 'looking_away') { // <-- NEW CHECK
-                                //     console.log(`[Close Button Check] Checking 'looking_away'. Current isLookingAway state: ${isLookingAway}`); // DEBUG
-                                //     if (isLookingAway) { // Looking away violation still active
-                                //         allowClose = false;
-                                //          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
-                                //          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                //  if (currentWarningType === 'no_face') {
+                                //      if (numberOfFacesDetected === 0) { // No face violation still active
+                                //          allowClose = false;
+                                //          blockReason = 'Please ensure your face is visible to close this warning.';
+                                //          console.log("Close button clicked, but 'no_face' violation persists. Preventing close.");
+                                //          // Optionally, add brief visual feedback like shaking the popup slightly? (More complex UI task)
                                 //      }
-                                 }
- 
- 
+                                //  } else if (currentWarningType === 'multiple_face') {
+                                //      if (numberOfFacesDetected > 1) { // Multiple faces violation still active
+                                //          allowClose = false;
+                                //          blockReason = 'Please ensure only one face is visible to close this warning.';
+                                //          console.log("Close button clicked, but 'multiple_face' violation persists. Preventing close.");
+                                //      }
+                                //  }
+                                //  else if (currentWarningType === 'high_noise') {
+                                //      if (isNoiseLevelHigh) { // High noise violation still active
+                                //          allowClose = false;
+                                //         blockReason = 'Please ensure a quiet environment to close this warning.';
+                                //         console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                //     }
+                                // // } else if (currentWarningType === 'looking_away') { // <-- NEW CHECK
+                                // //     console.log(`[Close Button Check] Checking 'looking_away'. Current isLookingAway state: ${isLookingAway}`); // DEBUG
+                                // //     if (isLookingAway) { // Looking away violation still active
+                                // //         allowClose = false;
+                                // //          blockReason = 'Please ensure your face is looking at the screen to close this warning.';
+                                // //          console.log("Close button clicked, but 'high_noise' violation persists. Preventing close.");
+                                // //      }
+                                //  }
+                                
+                                // The popup close button should *only* be blocked for specific, user-resolvable issues that triggered the popup.
+                                 // Currently, only 'incorrect_screen_share' requires user action (re-sharing).
+                                 // 'tab_switch' doesn't block the close button. 'form_submitted' is the end state.
+                                 // Face/Noise/Screenshare_stop now use the icon and don't block the popup close.
                                  // Only proceed if the close is allowed
                                  if (allowClose) {
 
@@ -2495,22 +2702,25 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                                  triggerEventToLog = 'tab_switch'; // Changed event name for clarity
                                                  shouldLogPopupClose = true;
                                                  break;
-                                             case 'screenshare_stop':
-                                                 triggerEventToLog = 'screenshare_stop'; // Changed event name
-                                                 shouldLogPopupClose = true;
-                                                 break;
-                                             case 'high_noise':
-                                                 triggerEventToLog = 'high_noise'; // Changed event name
-                                                 shouldLogPopupClose = true;
-                                                 break;
-                                             // Log acknowledgement for face issues ONLY if closing is allowed (meaning issue was resolved)
-                                             case 'no_face':
-                                                 triggerEventToLog = 'no_face'; // Log acknowledgement when resolved and closed
-                                                 shouldLogPopupClose = true;
-                                                 break;
-                                             case 'multiple_face':
-                                                 triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
-                                                 shouldLogPopupClose = true;
+                                            //  case 'screenshare_stop':
+                                            //      triggerEventToLog = 'screenshare_stop'; // Changed event name
+                                            //      shouldLogPopupClose = true;
+                                            //      break;
+                                            //  case 'high_noise':
+                                            //      triggerEventToLog = 'high_noise'; // Changed event name
+                                            //      shouldLogPopupClose = true;
+                                            //      break;
+                                            //  // Log acknowledgement for face issues ONLY if closing is allowed (meaning issue was resolved)
+                                            //  case 'no_face':
+                                            //      triggerEventToLog = 'no_face'; // Log acknowledgement when resolved and closed
+                                            //      shouldLogPopupClose = true;
+                                            //      break;
+                                            //  case 'multiple_face':
+                                            //      triggerEventToLog = 'multiple_face'; // Log acknowledgement when resolved and closed
+                                            //      shouldLogPopupClose = true;
+                                            // Note: screenshare_stop, high_noise, no_face, multiple_face, looking_away
+                                             // are now handled by the icon and their duration is logged when the *condition resolves*,
+                                             // not when a popup is closed.
                                                 break;
                                             // case 'looking_away': // <-- NEW CASE
                                             //     triggerEventToLog = 'looking_away'; // Log acknowledgement when resolved and closed
@@ -2586,6 +2796,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                             className="agree-button" // Re-use style
                             onClick={() => {
                                 setShowScreenShareRequiredError(false); // Close this popup
+                                setIsScreenSharingStopped(false);
                                 requestScreenCapture(); // Attempt to get permission again
                             }}
                         >
