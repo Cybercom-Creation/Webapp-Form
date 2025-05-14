@@ -280,7 +280,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         console.warn("Effect (Camera Check): No camera detected.");
                         setIsCameraAvailable(false);
                         //setCameraAvailabilityError('Camera is required to process further.');
-                         setCameraAvailabilityError('No camera hardware detected. Features requiring a camera (like photo capture or live video, if enabled) will be unavailable.');
+                        // setCameraAvailabilityError('No camera hardware detected. Features requiring a camera (like photo capture or live video, if enabled) will be unavailable.');
                     }
                 } catch (err) {
                     console.error("Effect (Camera Check): Error enumerating devices:", err);
