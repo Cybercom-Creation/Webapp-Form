@@ -156,6 +156,33 @@ body {
     opacity: 1;                /* Make it visible (fully opaque) */
     /* No need for visibility change here anymore */
 }
+
+.violation-icon {
+    /* position: absolute; 
+    right: 10px;  */
+    font-size: 24px; 
+    color: red; /* Make it red */
+    font-weight: bold;
+    
+    animation: blink 1s infinite; /* Add blinking animation */
+    
+    /* pointer-events: none; */ /* Kept commented, enable if icon overlays interactive elements */
+    width: 100%; /* Make the icon's div take the full width allocated by parent's align-items:center */
+    text-align: center; /* Center the '!' character within this div */
+}
+
+/* Optional: Add specific styles for different icon types if needed */
+/*
+.violation-icon.no_face { color: darkorange; }
+.violation-icon.multiple_face { color: purple; }
+*/
+
+/* Blinking animation */
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+}
 .camera-live-container {
     position: relative; /* <<< MUST BE PRESENT AND CORRECT */
     display: inline-block; /* Or block */
@@ -763,6 +790,10 @@ body {
     top: 60px;
     right: 20px;
     margin-top: 10px;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px; /* Adds space between the camera-box and the icon below it */
+    z-index: 1001; /* Ensure it's above the form but potentially below popups */
     display: flex;
     justify-content: center;
 }
