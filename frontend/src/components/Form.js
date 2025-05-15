@@ -9,6 +9,7 @@ const Form = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [uniqueId, setUniqueId] = useState(null); // <<< NEW: State for Unique ID
     const [userId, setUserId] = useState(null); // To store the user's ID after submission
     const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
     const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +17,7 @@ const Form = () => {
     const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
     const [emailId, setEmailId] = useState(null); // To store the user's email ID after submission
     const [isTestEffectivelyOver, setIsTestEffectivelyOver] = useState(false); // New state for form submission completion
-
+    
     const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
     const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
 
@@ -109,6 +110,7 @@ const Form = () => {
     const [showPermissionError, setShowPermissionError] = useState(false);
     const [timer, setTimer] = useState(null);
     const [isTimeOver, setIsTimeOver] = useState(false);
+    const [isOvertimeActive, setIsOvertimeActive] = useState(false); // <<< NEW: State for overtime UI
     const googleFormRef = useRef(null);
     const [mediaStream, setMediaStream] = useState(null);
     const [isScreenSharingStopped, setIsScreenSharingStopped] = useState(false);
@@ -757,11 +759,19 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        setCameraError(''); // Clear specific camera errors too
+        //setCameraError(''); // Clear specific camera errors too
+        // Step 1: Explicitly run all field validations (simulates onBlur)
+        // This ensures checks are done even if Enter is pressed before blurring.
+        const isNameValid = await checkFieldExists('name', name, setNameError);
+        const isEmailValid = await checkFieldExists('email', email, setEmailError);
+        const isPhoneValid = await checkFieldExists('phone', phone, setPhoneError);
+
 
         // 1. Validate form fields
-        if (!name || !email || !phone || nameError || emailError || phoneError) {
-            setError('Please fill in all details correctly before submitting.');
+        if (!isNameValid || !isEmailValid || !isPhoneValid ) {
+            // Specific error messages are already displayed below their respective fields.
+            // No general error message is needed here.
+            // setError('Please fill in all details correctly before submitting.'); // Avoid this
             return;
         }
 
@@ -829,17 +839,17 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 // 2. Check camera/face state if photo capture is enabled AND camera available
                 if (!isCameraOn || !isVideoReady) {
                     setError('Camera is not ready for photo capture. Please wait or check permissions.');
-                    setIsLoading(false);
+                    //setIsLoading(false);
                     return;
                 }
                 if (numberOfFacesDetected !== 1) {
                     setError('Please ensure exactly one face is clearly visible for the photo.');
-                    setIsLoading(false);
+                    //setIsLoading(false);
                     return;
                 }
                 if (isLookingAway) {
                     setError('Please look straight into the screen for the photo.');
-                    setIsLoading(false);
+                    //setIsLoading(false);
                     return;
                 }
 
@@ -850,7 +860,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 if (captureResult.error || !captureResult.photoBase64) {
                     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
                     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
-                    setIsLoading(false);
+                    //setIsLoading(false);
                     return;
                 }
                 capturedPhotoBase64 = captureResult.photoBase64;
@@ -861,14 +871,14 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             } else { 
                 // isCameraAvailable is null (still checking) - this case should be blocked by isSubmitDisabled
                 setError('Camera availability is still being checked. Please wait.');
-                setIsLoading(false);
+                //setIsLoading(false);
                 //console.log("handleSubmit: User photo feature enabled, but camera availability is still being checked.");
                 return;
             }
         } else {
             console.log("handleSubmit: User photo feature is DISABLED by settings. Skipping photo capture.");
         }
-
+        //Proceed with submission
         setIsLoading(true);
 
         // 4. Prepare data and submit
@@ -898,22 +908,42 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 body: JSON.stringify(userDetails),
             });
 
-            const responseBody = await response.text();
+            const responseBodyText = await response.text();
             console.log("Submit Response Status:", response.status);
 
             if (!response.ok) {
-                let errorMessage = `Form submission failed (Status: ${response.status})`;
-                try { errorMessage = JSON.parse(responseBody).message || errorMessage; } catch (parseErr) { errorMessage = responseBody || errorMessage; }
-                // If backend returns 400 due to missing photo when feature is enabled, this is where it will be caught.
-                if (response.status === 400 && applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === false && !userDetails.photoBase64) {
-                    console.warn("Backend rejected submission (400). This might be due to the 'User Photo Feature' being enabled but no photo provided (due to no camera). Backend may need adjustment to allow this.");
+                // let errorMessage = `Form submission failed (Status: ${response.status})`;
+                // try { errorMessage = JSON.parse(responseBody).message || errorMessage; } catch (parseErr) { errorMessage = responseBody || errorMessage; }
+                // // If backend returns 400 due to missing photo when feature is enabled, this is where it will be caught.
+                // if (response.status === 400 && applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === false && !userDetails.photoBase64) {
+                //     console.warn("Backend rejected submission (400). This might be due to the 'User Photo Feature' being enabled but no photo provided (due to no camera). Backend may need adjustment to allow this.");
+                // }
+                // throw new Error(errorMessage);
+            let backendErrorMessage = `Form submission failed (Status: ${response.status})`;
+                try {
+                    const parsedBody = JSON.parse(responseBodyText);
+                    backendErrorMessage = parsedBody.message || backendErrorMessage;
+                } catch (parseErr) {
+                    backendErrorMessage = responseBodyText || backendErrorMessage; // Use raw text if not JSON
                 }
-                throw new Error(errorMessage);
+
+                const isPhoneExistenceError = backendErrorMessage.toLowerCase().includes('phone') &&
+                                             (backendErrorMessage.toLowerCase().includes('exist') || backendErrorMessage.toLowerCase().includes('already taken'));
+
+                if (isPhoneExistenceError) {
+                    setPhoneError(backendErrorMessage); // Display error below phone input
+                } else {
+                    setError(backendErrorMessage); // Display general error
+                }
+                // No need to throw an error here, as we've handled it by setting state.
+                // The 'finally' block will set isLoading to false.
+                return; // Stop further processing in the try block    
             }
 
             // --- Success ---
             let data;
-            try { data = JSON.parse(responseBody); } catch (parseErr) { data = { message: "Submission successful (non-JSON response)." }; }
+            //try { data = JSON.parse(responseBody); } catch (parseErr) { data = { message: "Submission successful (non-JSON response)." }; }
+            try { data = JSON.parse(responseBodyText); } catch (parseErr) { data = { message: "Submission successful (non-JSON response)." }; }
 
             if (data && data.userId) {
                 setUserId(data.userId);
@@ -924,18 +954,21 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 // Set flag to prevent Effect 2 cleanup from stopping camera if requestScreenCapture stops it first.
                 isInitialCameraStopped.current = true; // Mark that we intend to stop/restart
                 console.log("handleSubmit success: Marked initial camera stop flag.");
-                setIsLoading(false); // Stop loading spinner
+                //setIsLoading(false); // Done in finally block
                 setShowInstructions(true); // Proceed to instructions
             } else {
-                console.error("Submission successful, but User ID not received!");
-                setError("Submission succeeded, but failed to get user info.");
+                // console.error("Submission successful, but User ID not received!");
+                // setError("Submission succeeded, but failed to get user info.");
+                // This catches network errors or other unexpected issues before/during fetch
+            console.error("Network or unexpected error during submission:", err);
+            setError(err.message || 'An unexpected network error occurred.');
             }
         } catch (err) {
             console.error("Caught submission error:", err);
             setError(err.message || 'An unexpected error occurred during submission.');
         }
         finally{
-
+            setIsLoading(false); // CRITICAL: Always set loading to false
         }
     };
 
@@ -1309,15 +1342,18 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             intervalId = setInterval(() => { // Store intervalId
                 setTimer((prev) => {
                     if (prev <= 1) {
-                        setIsTimeOver(true);
-                        // clearInterval(intervalId); // Clear here if setIsTimeOver doesn't trigger cleanup immediately
-                        // Optionally stop camera/screen share here if time runs out
-                        //if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-                        if (mediaStream && typeof mediaStream.getTracks === 'function') {
-                            mediaStream.getTracks().forEach(track => track.stop());
-                        }
-                        stopCamera(); // Stop webcam too
-                        markTestEnd();
+                        // setIsTimeOver(true);
+                        // // clearInterval(intervalId); // Clear here if setIsTimeOver doesn't trigger cleanup immediately
+                        // // Optionally stop camera/screen share here if time runs out
+                        // //if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+                        // if (mediaStream && typeof mediaStream.getTracks === 'function') {
+                        //     mediaStream.getTracks().forEach(track => track.stop());
+                        // }
+                        // stopCamera(); // Stop webcam too
+                        // markTestEnd();
+                        setIsTimeOver(true);         // Mark that allotted time is over
+                        setIsOvertimeActive(true);   // Activate overtime UI
+                        //markTestEnd();   
                         setIsTimerPaused(false); // Ensure unpaused if time runs out
                         return 0;
                     }
@@ -2140,12 +2176,29 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                             // Limit to 10 digits
                             const limitedValue = numericValue.slice(0, 10);
                             setPhone(limitedValue);
+                            // Clear Unique ID if phone becomes invalid during typing
+                            if (!validatePhone(limitedValue)) {
+                               
+                                setUniqueId(null);
+                            }
                     }}
                         onFocus={() => {
                             // No specific action needed here
                         }}
                         disabled={isLoading} // <<< ADD THIS
-                        onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
+                        //onBlur={() => checkFieldExists('phone', phone, setPhoneError)}
+                        onBlur={async () => {
+                        const isValidAfterCheck = await checkFieldExists('phone', phone, setPhoneError);
+                        if (isValidAfterCheck && validatePhone(phone)) {
+                        // isValidAfterCheck being true means checkFieldExists didn't set an error
+                        // and validatePhone confirms the format is correct.
+                        // Generate a unique ID, e.g., prefix + last 4 of phone + part of timestamp
+                        const newUniqueId = `UID-${phone.slice(-4)}-${Date.now().toString().slice(-6)}`;
+                        setUniqueId(newUniqueId);
+                        } else {
+                            setUniqueId(null);
+                        }
+                        }}
                         placeholder="Phone Number" 
                         required
                         aria-invalid={!!phoneError}
@@ -2236,7 +2289,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                     {/* <p>User photo capture disabled.</p> */} {/* Line removed/commented out */}
                                 </div>
                             )}
-                            {settingsLoading && <div className="camera-placeholder-box"><p>Loading camera settings...</p></div>}
+                            {/* {settingsLoading && <div className="camera-placeholder-box"><p>Loading camera settings...</p></div>} */}
                             {/* Placeholder when camera is off */}
                             {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
                             {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
@@ -2305,10 +2358,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
                             {/* <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p> */}
-                            <p className="custom-timer">
+                            {/* <p className="custom-timer"> */}
+                             <p className={`custom-timer ${isOvertimeActive ? 'overtime-active' : ''}`}>
                                 Time remaining: {timer !== null ? 
                                     `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : 
-                                    'Loading...'}
+                                (settingsLoading ? 'Loading...' : 'Starting...')}   
                             </p>
                         </div>
                         <div className="camera-feed">
@@ -2348,11 +2402,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
 
                                 {settingsLoading ? (
-                                    <p className="camera-placeholder">Loading camera settings...</p>
+                                    <p className="camera-placeholder"></p>
                                 ) : applicationSettings?.liveVideoStreamEnabled ? (
                                     <>
                                         {isCameraAvailable === false ? (
-                                            <p className="camera-placeholder">Live video feed unavailable: No camera detected on device.</p>
+                                            <p className="camera-placeholder"></p>
                                         ) : cameraError ? (
                                             <p className="error-message camera-error">{cameraError}</p>
                                         ) : isCameraOn ? ( // <-- CHANGE HERE: Render video if camera is ON
@@ -2368,11 +2422,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                             // Fallback if camera should be on but isn't (e.g., startCamera not called yet, or silently failed after being available)
                                             // This also covers if isCameraAvailable is null initially.
                                             // If isCameraOn is false, this branch won't be hit due to the parent condition.
-                                            <p className="camera-placeholder">Camera feed starting or unavailable.</p>
+                                            <p className="camera-placeholder"></p>
                                         )}
                                     </>
                                 ) : (
-                                    <p className="camera-placeholder">Live camera feed disabled by admin settings.</p>
+                                    <p className="camera-placeholder"></p>
 
 
 
@@ -2426,11 +2480,19 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                 <span className="detail-label">Phone:</span>
                                 <span className="detail-value">{phone}</span>
                             </div>
+                             {/* Display Unique ID if available */}
+                            {uniqueId && (
+                                <div className="detail-item">
+                                    
+                                    <span className="detail-label">Unique ID:</span>
+                                    <span className="detail-value">{uniqueId}</span>
+                                 </div>
+                             )}
                         </div>
                     </div>
 
                     {/* --- NEW: Email Reminder Message --- */}
-                    <div className="email-reminder-message overlay top-left">
+                    <div className="email-reminder-message ">
                         <p>
                             <strong>Important:</strong> Please use the email address{' '}
                             <strong>({email})</strong> you entered during registration
@@ -2820,7 +2882,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
             {/* Time Over Popup */}
             {/* ... (No changes needed here) ... */}
-            {submitted && isTimeOver && !isTestEffectivelyOver && ( // Only show if test not already over by form submission
+            {/* {submitted && isTimeOver && !isTestEffectivelyOver && ( // Only show if test not already over by form submission
                  <div className="popup-overlay">
                      <div className="popup blocked-message">
                         <h2>Time Over</h2>
@@ -2835,7 +2897,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         </button>
                      </div>
                 </div>
-            )}
+            )} */}
 
             {/* --- End Popups --- */}
 

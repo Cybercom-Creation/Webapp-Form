@@ -465,6 +465,12 @@ body {
     margin: 5px auto; /* Center the timer horizontally with some margin */
     animation: fadeIn 0.5s ease-in-out; /* Smooth fade-in animation */
 }
+/* NEW STYLE for overtime */
+.custom-timer.overtime-active {
+    color: red;
+    /* You can add other styles like a different background or border if desired */
+    /* e.g., border: 2px solid red; */
+}
 
 /* Pulse animation for the timer */
 @keyframes pulse {
@@ -581,12 +587,12 @@ body {
     /* Inherit general overlay styles if needed, or define specific ones */
     position: absolute; /* Position relative to google-form-page */
     z-index: 9;         /* Slightly lower than user details if overlapping needed, or adjust positioning */
-    top: 0;             /* Align with top initially */
+    top: 30px;             /* Align with top initially */
     left: 0;            /* Align with left */
     margin: 15px;       /* Match the margin of the user details box */
     margin-top: 200px;  /* << ADJUST THIS VALUE */ /* Push it down below the user details box. You'll need to fine-tune this based on the height of your user details box */
     width: 300px;       /* Match the width of the user details box */
-    padding: 10px 15px;
+    padding: 15px 20px;
     background-color: rgba(255, 243, 205, 0.9); /* Light warning yellow, semi-transparent */
     border: 1px solid #ffeeba;
     border-radius: 6px;
