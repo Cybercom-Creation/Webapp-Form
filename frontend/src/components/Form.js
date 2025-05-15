@@ -960,12 +960,12 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 // console.error("Submission successful, but User ID not received!");
                 // setError("Submission succeeded, but failed to get user info.");
                 // This catches network errors or other unexpected issues before/during fetch
-            console.error("Network or unexpected error during submission:", err);
+            console.error("Network or unexpected error during submission:", error);
             setError(err.message || 'An unexpected network error occurred.');
             }
-        } catch (err) {
-            console.error("Caught submission error:", err);
-            setError(err.message || 'An unexpected error occurred during submission.');
+        } catch (error) {
+            console.error("Caught submission error:", error);
+            setError(error.message || 'An unexpected error occurred during submission.');
         }
         finally{
             setIsLoading(false); // CRITICAL: Always set loading to false
@@ -1236,8 +1236,8 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                  setErrorCallback('');
                  return true;
             }
-        } catch (err) {
-            console.error(`Error checking field ${field}:`, err);
+        } catch (error) {
+            console.error(`Error checking field ${field}:`, error);
             setErrorCallback('Network error checking field availability.');
             return false;
         }
