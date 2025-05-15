@@ -2214,193 +2214,115 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     </p>
                     </div>
                     {/* --- Camera Section (Simplified) --- */}
-                    <div className="form-group camera-section">
+                     {/* --- Camera Section: Conditionally Rendered --- */}
+                    {(settingsLoading || (applicationSettings && applicationSettings.userPhotoFeatureEnabled)) && (
+                        <div className="form-group camera-section">
 
-                    {/* --- NEW: Display Initial Camera Availability Error --- */}
-                    {cameraAvailabilityError && <p className="error-message visible">{cameraAvailabilityError}</p>}
-
-                        
-                    {/* Apply same logic if cameraError causes shifts */}
-                    <p className={`error-message ${cameraError ? 'visible' : ''}`}>
-                    {cameraError || '\u00A0'}
-                    </p>
-                       
-
-   
-                        {/* --- Face Count Warning --- */}
-                        <p
-                        className={`error-message ${
-                            isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''
-                        }`}
-                        style={
-                            isCameraOn && isVideoReady && numberOfFacesDetected !== 1
-                                ? { color: 'orange', fontWeight: 'bold' }
-                                : {}
-                        }
-                    >
-                        {/* Show message only if count is not 1 */}
-                        {isCameraOn && isVideoReady && numberOfFacesDetected !== 1
-                            ? numberOfFacesDetected === 0
-                                ? 'Warning: No face detected.'
-                                : 'Warning: Multiple faces detected.'
-                                : '\u00A0' /* Keep space otherwise */
-                        }
-                    </p>
-
-                    {/* --- Looking Away Warning --- */}
-                    <p
-                        className={`error-message ${
-                            isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'visible' : ''
-                        }`}
-                        style={
-                            isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway
-                                ? { color: 'orange', fontWeight: 'bold' }
-                                : {}
-                        }
-                    >                    
-       {isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'Warning: Look straight into the screen.' : '\u00A0'}
-    </p>
-    {/* --- END MODIFICATION --- */}                    
-
-
-                        {/* Live feed container */}
-                        <div className="camera-live-container">
-                            {/* <video
-                                ref={videoRef}
-                                autoPlay
-                                playsInline
-                                muted // Ensure muted
-                                className="camera-video-feed"
-                                style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
-                            ></video> */}
-                            {applicationSettings?.userPhotoFeatureEnabled && (
-                                <video
-                                    ref={videoRef}
-                                    autoPlay
-                                    playsInline
-                                    muted // Ensure muted
-                                    className="camera-video-feed"
-                                    style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
-                                ></video>
-                            )}
-                            {/* {!applicationSettings?.userPhotoFeatureEnabled && !settingsLoading && <div className="camera-placeholder-box"></div>} */}
-                            {!settingsLoading && applicationSettings && !applicationSettings.userPhotoFeatureEnabled && (
-                                <div className="camera-placeholder-box">
-                                    {/* <p>User photo capture disabled.</p> */} {/* Line removed/commented out */}
+                            {/* 1. Settings are loading placeholder */}
+                            {settingsLoading && (
+                                <div className="camera-placeholder-box" style={{ minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: '8px' }}>
+                                    <p>Loading camera settings...</p>
                                 </div>
                             )}
-                            {/* {settingsLoading && <div className="camera-placeholder-box"><p>Loading camera settings...</p></div>} */}
-                            {/* Placeholder when camera is off */}
-                            {/* {!isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>}
-                            {isCameraAvailable === null && <div className="camera-placeholder-box">Checking for camera...</div>}
-                            {isCameraAvailable === true && !isCameraOn && <div className="camera-placeholder-box">Camera starting...</div>} */}
-                            {/* Hidden canvas for capture */}
+
+                            {/* 2. Settings loaded AND user photo feature is enabled */}
+                            {!settingsLoading && applicationSettings?.userPhotoFeatureEnabled && (
+                                <>
+                                    {/* Display initial camera availability error if feature is ON but camera NOT available */}
+                                    {isCameraAvailable === false && cameraAvailabilityError && (
+                                        <p className="error-message visible">{cameraAvailabilityError}</p>
+                                    )}
+
+                                    {/* Display operational camera error if feature is ON and camera IS available but failed to start */}
+                                    {isCameraAvailable === true && cameraError && (
+                                        <p className={`error-message ${cameraError ? 'visible' : ''}`}>{cameraError || '\u00A0'}</p>
+                                    )}
+
+                                    {/* Render video feed and warnings ONLY if camera is available */}
+                                    {isCameraAvailable === true && (
+                                        <>
+                                            {/* Face Count Warning */}
+                                            <p
+                                                className={`error-message ${isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? 'visible' : ''}`}
+                                                style={isCameraOn && isVideoReady && numberOfFacesDetected !== 1 ? { color: 'orange', fontWeight: 'bold' } : {}}
+                                            >
+                                                {isCameraOn && isVideoReady && numberOfFacesDetected !== 1
+                                                    ? (numberOfFacesDetected === 0 ? 'Warning: No face detected.' : 'Warning: Multiple faces detected.')
+                                                    : '\u00A0'}
+                                            </p>
+
+                                            {/* Looking Away Warning */}
+                                            <p
+                                                className={`error-message ${isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'visible' : ''}`}
+                                                style={isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? { color: 'orange', fontWeight: 'bold' } : {}}
+                                            >
+                                                {isCameraOn && isVideoReady && numberOfFacesDetected === 1 && isLookingAway ? 'Warning: Look straight into the screen.' : '\u00A0'}
+                                            </p>
+
+                                            {/* Live feed container */}
+                                            <div className="camera-live-container">
+                                                <video
+                                                    ref={videoRef}
+                                                    autoPlay
+                                                    playsInline
+                                                    muted
+                                                    className="camera-video-feed"
+                                                    style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }}
+                                                />
+                                                {/* Placeholder if camera is available but not yet on/ready */}
+                                                {!isCameraOn && (
+                                                    <div className="camera-placeholder-box" style={{ minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: '8px' }}>
+                                                        <p>Camera starting...</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                    {/* Placeholder if camera availability is still being checked (isCameraAvailable === null) */}
+                                    {isCameraAvailable === null && (
+                                        <div className="camera-placeholder-box" style={{ minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #ccc', borderRadius: '8px' }}>
+                                            <p>Checking for camera...</p>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                            {/* Hidden canvas for capture - always include if section is rendered, display:none handles visibility */}
                             <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
                         </div>
-                    </div>
+                    )}
+                    {/* If !settingsLoading && !applicationSettings.userPhotoFeatureEnabled, the entire block above is skipped. */}
                     {/* --- End Camera Section --- */}
 
-                    {/* // --- General Form Error (if you want the same behavior) --- */}
-                    {/* Apply same logic if general error causes shifts */}
+                    {/* General Form Error */}
                     <p className={`error-message ${error ? 'visible' : ''}`}>
-                    {error || '\u00A0'}
+                        {error || '\u00A0'}
                     </p>
 
                     {/* Submit Button */}
                     <button
                         type="submit"
                         className="submit-button"
-                        disabled={isSubmitDisabled} // Use the new comprehensive disabled state
+                        disabled={isSubmitDisabled}
                     >
-                        {/* Show spinner ONLY when isLoading is true */}
-                        {/* {isLoading && <div className="spinner"></div>} */}
-
-                        {/* Show spinner if settings are loading or form is submitting */}
                         {(isLoading || settingsLoading) && <div className="spinner"></div>}
-                        {/* {settingsLoading
-                        ? 'Loading Settings...'
-                        : isLoading
-                        ? 'Submitting...'
-                        : isSubmitDisabled
-                        ? isCameraAvailable === null
-                        ? 'Checking Camera...' // NEW
-                        : !isCameraAvailable
-                        ? 'Camera Required' // NEW
-                        : !detectorReady
-                                ? 'Loading Detector...'
-                                : !isCameraOn
-                                ? 'Starting Camera...'
-                                : !isVideoReady
-                                ? 'Initializing Camera...'
-                                : (!name || !!nameError || !email || !!emailError || !phone || !!phoneError)
-                                ?  'Fill Details Correctly' // Changed for clarity
-                                : numberOfFacesDetected !== 1
-                                ? 'Align Face (1 needed)'
-                                : isLookingAway // <-- ADDED: Check for looking away
-                                ? 'Look Straight'
-                                : 'Check Conditions' // Fallback disabled text
-                            : 'Submit Details'} */}
-                             {/* Display the determined button text */}
                         {submitButtonText}
                     </button>
-                {/* </form>
-            ) : submitted && !isTestEffectivelyOver && mediaStream ? ( // Test Area (Test Started, Screen Sharing Active, and test not effectively over) */}
-             </form>
-            ) : submitted && 
-                !isTestEffectivelyOver && 
-                (mediaStream || (applicationSettings && !applicationSettings.periodicScreenshotsEnabled)) 
+                </form>
+            ) : submitted &&
+                !isTestEffectivelyOver &&
+                (mediaStream || (applicationSettings && !applicationSettings.periodicScreenshotsEnabled))
                 ? ( // Test Area: Show if submitted, test not over, AND (screen share active OR screenshots are disabled)
                 <div className="google-form-page">
-                   
-                    
-                    
-                    
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
-                            {/* <p className="custom-timer">Time remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}</p> */}
-                            {/* <p className="custom-timer"> */}
-                             <p className={`custom-timer ${isOvertimeActive ? 'overtime-active' : ''}`}>
-                                Time remaining: {timer !== null ? 
-                                    `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` : 
-                                (settingsLoading ? 'Loading...' : 'Starting...')}   
+                            <p className={`custom-timer ${isOvertimeActive ? 'overtime-active' : ''}`}>
+                                Time remaining: {timer !== null ?
+                                    `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}` :
+                                    (settingsLoading ? 'Loading...' : 'Starting...')}
                             </p>
                         </div>
                         <div className="camera-feed">
                             <div className="camera-box">
-                                {/* {cameraError && <p className="error-message camera-error">{cameraError}</p>} */}
-                                {/* <video
-                                    ref={videoRef}
-                                    autoPlay
-                                    playsInline
-                                    muted // Ensure muted
-                                    className={`camera-video ${cameraError ? 'hidden' : ''}`}
-                                    style={{ transform: 'scaleX(-1)' }} // Flip horizontally
-                                ></video> */}
-                                {/* Show placeholder if camera is intended ON but not ready/error */}
-                                {/* {isCameraOn && !isVideoReady && !cameraError && !detectorReady && <p className="camera-placeholder">Initializing...</p>} */}
-                                {/* {applicationSettings?.liveVideoStreamEnabled && cameraError && <p className="error-message camera-error">{cameraError}</p>}
-                                {applicationSettings?.liveVideoStreamEnabled && (
-                                    <video
-                                        ref={videoRef}
-                                        autoPlay
-                                        playsInline
-                                        muted
-                                        className={`camera-video ${cameraError ? 'hidden' : ''}`}
-                                        style={{ transform: 'scaleX(-1)' }}
-                                    ></video>
-                                )}
-                                {applicationSettings?.liveVideoStreamEnabled && isCameraOn && !isVideoReady && !cameraError && <p className="camera-placeholder">Initializing...</p>}
-                                {!applicationSettings?.liveVideoStreamEnabled && !settingsLoading && (
-                                    <p className="camera-placeholder"></p> */}
-
-
-
-
-
-
-
-
-
                                 {settingsLoading ? (
                                     <p className="camera-placeholder"></p>
                                 ) : applicationSettings?.liveVideoStreamEnabled ? (
@@ -2409,24 +2331,56 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                             <p className="camera-placeholder"></p>
                                         ) : cameraError ? (
                                             <p className="error-message camera-error">{cameraError}</p>
-                                        ) : isCameraOn ? ( // <-- CHANGE HERE: Render video if camera is ON
-                                            <video // Render video element if camera is intended ON
-                                                ref={videoRef}
-                                                autoPlay
-                                                playsInline
-                                                muted
-                                                className={`camera-video ${!isCameraOn || !isVideoReady ? 'hidden' : ''}`}
+                                        ) : isCameraOn ? (
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    // muted // Ensure muted
+                                    // className="camera-video-feed"
+                                    // style={{ display: isCameraOn ? 'block' : 'none', transform: 'scaleX(-1)' }} // Flip horizontally
+                                    className={`camera-video ${!isCameraOn || !isVideoReady ? 'hidden' : ''}`}
                                                 style={{ transform: 'scaleX(-1)' }}
-                                            ></video>
-                                        ) : (
-                                            // Fallback if camera should be on but isn't (e.g., startCamera not called yet, or silently failed after being available)
-                                            // This also covers if isCameraAvailable is null initially.
-                                            // If isCameraOn is false, this branch won't be hit due to the parent condition.
+                                ></video>
+                           
+
+
+
+                                ) : (
                                             <p className="camera-placeholder"></p>
                                         )}
                                     </>
                                 ) : (
                                     <p className="camera-placeholder"></p>
+
+
+
+                                // {settingsLoading ? (
+                                //     <p className="camera-placeholder"></p>
+                                // ) : applicationSettings?.liveVideoStreamEnabled ? (
+                                //     <>
+                                //         {isCameraAvailable === false ? (
+                                //             <p className="camera-placeholder"></p>
+                                //         ) : cameraError ? (
+                                //             <p className="error-message camera-error">{cameraError}</p>
+                                //         ) : isCameraOn ? ( // <-- CHANGE HERE: Render video if camera is ON
+                                //             <video // Render video element if camera is intended ON
+                                //                 ref={videoRef}
+                                //                 autoPlay
+                                //                 playsInline
+                                //                 muted
+                                //                 className={`camera-video ${!isCameraOn || !isVideoReady ? 'hidden' : ''}`}
+                                //                 style={{ transform: 'scaleX(-1)' }}
+                                //             ></video>
+                                //         ) : (
+                                //             // Fallback if camera should be on but isn't (e.g., startCamera not called yet, or silently failed after being available)
+                                //             // This also covers if isCameraAvailable is null initially.
+                                //             // If isCameraOn is false, this branch won't be hit due to the parent condition.
+                                //             <p className="camera-placeholder"></p>
+                                //         )}
+                                //     </>
+                                // ) : (
+                                //     <p className="camera-placeholder"></p>
 
 
 
