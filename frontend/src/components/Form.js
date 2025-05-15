@@ -961,7 +961,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 // setError("Submission succeeded, but failed to get user info.");
                 // This catches network errors or other unexpected issues before/during fetch
             console.error("Network or unexpected error during submission:", error);
-            setError(err.message || 'An unexpected network error occurred.');
+            setError(error.message || 'An unexpected network error occurred.');
             }
         } catch (error) {
             console.error("Caught submission error:", error);
