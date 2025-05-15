@@ -2131,7 +2131,16 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         type="tel"
                         id="phone"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => {
+                        
+                        //setPhone(e.target.value);
+                        const inputValue = e.target.value;
+                            // Remove non-numeric characters
+                            const numericValue = inputValue.replace(/[^0-9]/g, '');
+                            // Limit to 10 digits
+                            const limitedValue = numericValue.slice(0, 10);
+                            setPhone(limitedValue);
+                    }}
                         onFocus={() => {
                             // No specific action needed here
                         }}
