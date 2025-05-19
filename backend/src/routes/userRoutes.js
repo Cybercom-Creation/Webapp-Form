@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User'); // Import the User model
+const College = require('../models/College'); // <<< IMPORT THE COLLEGE MODEL
 const Setting = require('../models/Setting'); // Assuming you have this model
 
 // *** Import the Google Drive upload function ***
@@ -11,7 +12,7 @@ const { uploadProfilePhotoToDrive, getUserDriveFolderDetails } = require('../Ser
 // Create a new user
 router.post('/', async (req, res) => {
     try {
-        const { name, email, phone, photoBase64 } = req.body;
+        const { name, email, phone, photoBase64, collegeName } = req.body;
 
         // Fetch current application settings
         const appSettings = await Setting.findOne({ identifier: 'global_settings' });
@@ -47,6 +48,8 @@ router.post('/', async (req, res) => {
             return res.status(409).json({ message: `${conflictField} already exists.` });
         }
 
+
+
         // --- 1. Get/Create the SINGLE User Drive Folder ---
         let userDriveFolder = { id: null, link: null };
         const shouldCreateDriveFolder = appSettings && (appSettings.userPhotoFeatureEnabled || appSettings.periodicScreenshotsEnabled);
@@ -70,6 +73,32 @@ router.post('/', async (req, res) => {
             console.log(`[Routes] Skipping Drive folder creation for user: ${name} as no relevant features (userPhoto, screenshot) are enabled.`);
         }
         // --- End Folder Creation ---
+
+        // --- Handle College Name ---
+        let collegeId = null;
+        if (collegeName && collegeName.trim() !== '') {
+            const trimmedCollegeName = collegeName.trim();
+            try {
+                let college = await College.findOne({ name: trimmedCollegeName });
+                if (!college) {
+                    // College not found, create it
+                    console.log(`[Routes] College "${trimmedCollegeName}" not found, creating new one.`);
+                    college = new College({ name: trimmedCollegeName });
+                    await college.save();
+                    console.log(`[Routes] College "${trimmedCollegeName}" created with ID: ${college._id}`);
+                } else {
+                    console.log(`[Routes] College "${trimmedCollegeName}" found with ID: ${college._id}`);
+                }
+                collegeId = college._id;
+            } catch (collegeError) {
+                console.error('[Routes] Error finding or creating college:', collegeError);
+                // Optional: Decide if user creation should fail if college processing fails.
+                // For now, we'll log the error and proceed without associating a college.
+                // If college is critical, you might return an error:
+                // return res.status(500).json({ message: 'Error processing college information.' });
+            }
+        }
+        // --- End Handle College Name ---
 
 
 
@@ -128,6 +157,10 @@ router.post('/', async (req, res) => {
         newUserDetails.driveFolderLink = userDriveFolder.link;
         if (photoUploadResult && photoUploadResult.link) {
             newUserDetails.photoDriveLink = photoUploadResult.link;
+        }
+
+        if (collegeId) { // Add collegeId if it was processed
+            newUserDetails.college = collegeId;
         }
 
         const newUser = new User(newUserDetails);

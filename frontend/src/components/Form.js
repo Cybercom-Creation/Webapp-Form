@@ -9,6 +9,7 @@ const Form = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [collegeName, setCollegeName] = useState(''); // <<< NEW: State for College Name
     const [uniqueId, setUniqueId] = useState(null); // <<< NEW: State for Unique ID
     const [userId, setUserId] = useState(null); // To store the user's ID after submission
     const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
@@ -340,7 +341,23 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         fetchAppSettings();
     }, [fetchAppSettings]); // Call on mount
     
+    // --- Effect: Parse College Name from URL ---
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const encodedCollegeName = params.get('college');
 
+        if (encodedCollegeName) {
+            try {
+                const decodedName = atob(encodedCollegeName); // Decode Base64
+                setCollegeName(decodedName);
+                console.log('Decoded college name from URL:', decodedName);
+            } catch (e) {
+                console.error('Failed to decode college name from URL parameter:', e);
+                // Optionally, set an error message or a default college name
+                // setCollegeName("Error: Could not decode college name");
+            }
+        }
+    }, []); // Runs once on component mount
 
     // --- Effect: WebSocket Connection Management ---
     useEffect(() => {
@@ -883,7 +900,8 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
         // 4. Prepare data and submit
         // const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
-        const userDetails = { name, email, phone };
+        //const userDetails = { name, email, phone };
+        const userDetails = { name, email, phone, collegeName }; // <<< ADDED collegeName
         // if (capturedPhotoBase64) { // Only add if captured
         let logMessage = "Submitting user details...";
 
@@ -1410,15 +1428,17 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
             // Start test camera if live video is enabled
             if (applicationSettings.liveVideoStreamEnabled) {
-                console.log('handleAgreeAndStartTest: Live video enabled. Starting test camera...');
-                // try {
-                //     await startCamera('test');
-                // } catch (startError) {
-                //     console.error('handleAgreeAndStartTest: Error starting test camera:', startError);
-                //     setCameraError("Failed to start camera for the test. Please try again.");
-                //     return; // Don't proceed if camera fails
-                await startCamera('test'); // Wait for startCamera to attempt acquisition
-            //  }
+                // console.log('handleAgreeAndStartTest: Live video enabled. Starting test camera...');
+                // await startCamera('test'); // Wait for startCamera to attempt acquisition
+                 console.log('handleAgreeAndStartTest: Live video enabled. Scheduling start of test camera...');
+                // Introduce a brief delay to allow stopCamera's state updates to propagate
+                // before startCamera is called. This mimics the behavior in requestScreenCapture
+                // and helps prevent a race condition where startCamera might see stale state.
+                setTimeout(async () => {
+                    console.log('handleAgreeAndStartTest (deferred): Attempting startCamera("test")...');
+                    await startCamera('test');
+                }, 0); // Yield to the event loop.
+            
             } else {
                 console.log('handleAgreeAndStartTest: Live video disabled. Test camera will not be started.');
                 if (isCameraOn) stopCamera(); // Ensure camera is off
@@ -2213,6 +2233,23 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         {phoneError || '\u00A0'}
                     </p>
                     </div>
+
+                    {/* College Name Field (Disabled) */}
+                    <div className="form-group">
+                        <div className="input-container">
+                            <input
+                                type="text"
+                                id="collegeName"
+                                value={collegeName}
+                                disabled // This field is always disabled
+                                readOnly // Good practice for disabled, pre-filled fields
+                                placeholder="College Name" // Will be overridden by value if present
+                            />
+                            <label htmlFor="collegeName">College Name</label>
+                        </div>
+                        {/* No error display needed as it's auto-filled and disabled */}
+                    </div>
+
                     {/* --- Camera Section (Simplified) --- */}
                      {/* --- Camera Section: Conditionally Rendered --- */}
                     {(settingsLoading || (applicationSettings && applicationSettings.userPhotoFeatureEnabled)) && (

@@ -23,6 +23,11 @@ const UserSchema = new mongoose.Schema({
         // Add validation if needed, e.g., length or regex
         // match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit phone number']
     },
+    college: { // <<< NEW FIELD
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'College', // This links to the College model
+        // required: false // Set to true if college is mandatory for every user
+    },
     photoBase64: { // Store the initial photo captured during registration
         type: String, // Base64 data is a string
         required: false,
