@@ -14,8 +14,16 @@ router.get('/', async (req, res) => {
         //     // This case should ideally be handled by findOrCreate creating defaults
         //     return res.status(404).json({ msg: 'Settings not found and defaults could not be created.' });
         // }
-        const settings = await Setting.findOrCreate(); // This should always return a document or throw
+        const settingsDoc = await Setting.findOrCreate(); // This should always return a document or throw
         // The Setting.findOrCreate() method is designed to always return a settings document.
+        const settings = settingsDoc.toObject(); // Convert to a plain JS object
+
+        // Ensure googleFormLink is part of the response, defaulting to empty string if not set.
+        // This handles cases where an old document (pre-dating this field) is fetched.
+        if (typeof settings.googleFormLink === 'undefined') {
+            settings.googleFormLink = ''; // Default to empty string as per schema
+        }
+
         res.json(settings);
     } catch (err) {
         console.error('Error fetching settings:', err.message);
@@ -28,6 +36,7 @@ router.get('/', async (req, res) => {
             periodicScreenshotsEnabled: false,
             screenshotIntervalSeconds: 300,
             testDurationInterval: 10, // Default to 10 minutes
+            googleFormLink: '', // Default googleFormLink
             error: 'Server error while fetching settings'
         });
     }
@@ -44,7 +53,8 @@ router.patch('/', async (req, res) => {
         userPhotoFeatureEnabled,
         periodicScreenshotsEnabled,
         screenshotIntervalSeconds,
-        testDurationInterval
+        testDurationInterval,
+        googleFormLink // Add googleFormLink here
     } = req.body;
 
     const settingsFields = {};
@@ -53,8 +63,10 @@ router.patch('/', async (req, res) => {
     if (userPhotoFeatureEnabled !== undefined) settingsFields.userPhotoFeatureEnabled = userPhotoFeatureEnabled;
     if (periodicScreenshotsEnabled !== undefined) settingsFields.periodicScreenshotsEnabled = periodicScreenshotsEnabled;
     if (screenshotIntervalSeconds !== undefined) settingsFields.screenshotIntervalSeconds = screenshotIntervalSeconds;
-    if (testDurationInterval !== undefined) settingsFields.testDurationInterval = Number(testDurationInterval); 
+    if (testDurationInterval !== undefined) settingsFields.testDurationInterval = Number(testDurationInterval);
+    if (googleFormLink !== undefined) settingsFields.googleFormLink = googleFormLink; // Add to settingsFields
     console.log('Admin Panel PATCH /api/settings - Constructed settingsFields to update:', settingsFields); // <--- ADD THIS
+    
 
     try {
         let settings = await Setting.findOneAndUpdate(
@@ -79,6 +91,49 @@ router.patch('/', async (req, res) => {
     } catch (err) {
         console.error('Error updating settings:', err.message);
         res.status(500).send('Server Error');
+    }
+});
+
+// GET /api/settings/google-form-link - Fetch the Google Form link
+// This endpoint is for your candidate-facing web-app
+router.get('/google-form-link', async (req, res) => {
+    try {
+        const settings = await Setting.findOrCreate(); // Ensures settings doc exists
+        if (settings && settings.googleFormLink && settings.googleFormLink.trim() !== '') {
+            res.json({ success: true, link: settings.googleFormLink });
+        } else {
+            // It's better to send a 200 OK with success: false if the setting is simply not configured,
+            // rather than a 404, as the settings resource itself exists.
+            res.json({ success: false, message: 'Google Form link not configured.' });
+        }
+    } catch (error) {
+        console.error('Error fetching Google Form link:', error);
+        res.status(500).json({ success: false, message: 'Failed to retrieve Google Form link.' });
+    }
+});
+
+// PUT /api/settings/google-form-link - Update the Google Form link
+// This endpoint is for your admin panel
+// Using PUT here as it's specifically for updating/replacing this particular setting.
+// You could also merge this logic into the main PATCH /api/settings endpoint if preferred.
+router.put('/google-form-link', async (req, res) => {
+    // Optional: Add authentication/authorization middleware here
+    const { googleFormLink } = req.body;
+
+    if (typeof googleFormLink !== 'string') {
+        return res.status(400).json({ success: false, message: 'Invalid Google Form link provided. It must be a string.' });
+    }
+
+    try {
+        const settings = await Setting.findOneAndUpdate(
+            { identifier: 'global_settings' }, // Assuming you use this identifier
+            { $set: { googleFormLink: googleFormLink.trim() } },
+            { new: true, upsert: true, runValidators: true }
+        );
+        res.json({ success: true, message: 'Google Form link updated successfully.', settings });
+    } catch (error) {
+        console.error('Error updating Google Form link:', error);
+        res.status(500).json({ success: false, message: 'Failed to update Google Form link.' });
     }
 });
 

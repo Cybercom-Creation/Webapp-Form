@@ -57,90 +57,159 @@ const addEditorPermission = async (drive, fileId, userEmail) => {
 };
 
 
-// --- Find or Create Folder ---
-const findOrCreateFolder = async (drive, folderName, parentFolderId, shareWithUser = false) => { // Added shareWithUser flag
-    const query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and '${parentFolderId}' in parents and trashed=false`;
-    console.log(`[Drive Service] Searching for folder: Name='${folderName}', ParentID='${parentFolderId}'`);
+// --- NEW: Internal Helper - Find Folder ---
+const _findDriveFolder = async (drive, name, parentId) => {
+    // parentId can be an actual ID. If null/undefined, effectiveParentId becomes 'root'.
+    const effectiveParentId = parentId || 'root';
+    let query = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false and '${effectiveParentId}' in parents`;
+
+    console.log(`[Drive Service] _findDriveFolder: Searching for folder: Name='${name}', ParentID='${effectiveParentId}'`);
     try {
-        const response = await drive.files.list({
+        const res = await drive.files.list({
             q: query,
-            fields: 'files(id, name)',
+            fields: 'files(id, name, webViewLink)', // Ensure webViewLink is fetched
             spaces: 'drive',
         });
-
-        if (response.data.files && response.data.files.length > 0) {
-            const foundId = response.data.files[0].id;
-            console.log(`[Drive Service] Folder '${folderName}' found with ID: ${foundId}`);
-            // Even if found, ensure the target user has permission (optional, but good practice)
-            if (shareWithUser && TARGET_USER_EMAIL) {
-                 await addEditorPermission(drive, foundId, TARGET_USER_EMAIL);
-            }
-            return foundId;
-        } else {
-            console.log(`[Drive Service] Folder '${folderName}' not found in parent '${parentFolderId}'. Creating...`);
-            const fileMetadata = {
-                name: folderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [parentFolderId],
-            };
-            const createdFolder = await drive.files.create({
-                resource: fileMetadata,
-                fields: 'id',
-            });
-            const createdId = createdFolder.data.id;
-            console.log(`[Drive Service] Folder '${folderName}' created with ID: ${createdId}`);
-            // Share the newly created folder
-            if (shareWithUser && TARGET_USER_EMAIL) {
-                await addEditorPermission(drive, createdId, TARGET_USER_EMAIL);
-            }
-            return createdId;
+        if (res.data.files && res.data.files.length > 0) {
+            console.log(`[Drive Service] _findDriveFolder: Folder '${name}' found: ID=${res.data.files[0].id}, Name='${res.data.files[0].name}'`);
+            return res.data.files[0]; // Return the folder object { id, name, webViewLink }
         }
+        console.log(`[Drive Service] _findDriveFolder: Folder '${name}' not found under parent '${effectiveParentId}'.`);
+        return null;
     } catch (error) {
-        console.error(`[Drive Service] Error finding or creating folder '${folderName}' in parent '${parentFolderId}':`, error.response ? error.response.data : error.message);
-        throw new Error(`Failed to find or create folder '${folderName}'. Ensure service account has permissions on parent folder ID: ${parentFolderId}.`);
+        console.error(`[Drive Service] _findDriveFolder: Error finding folder "${name}" under parent '${effectiveParentId}':`, error.response ? error.response.data : error.message);
+        throw error;
+    }
+};
+
+// --- NEW: Internal Helper - Create Folder ---
+const _createDriveFolder = async (drive, name, parentId) => {
+    // parentId can be an actual ID. If null/undefined, folder created in 'root'.
+    const effectiveParentId = parentId || 'root';
+    console.log(`[Drive Service] _createDriveFolder: Creating folder: Name='${name}', ParentID='${effectiveParentId}'`);
+    const fileMetadata = {
+        name: name,
+        mimeType: 'application/vnd.google-apps.folder',
+    };
+    if (parentId) { // Only set parents if parentId is not null (i.e., not root)
+        fileMetadata.parents = [parentId];
+    }
+
+    try {
+        const folder = await drive.files.create({
+            resource: fileMetadata,
+            fields: 'id, name, webViewLink', // Ensure webViewLink is fetched
+        });
+        console.log(`[Drive Service] _createDriveFolder: Folder '${name}' created: ID=${folder.data.id}, Name='${folder.data.name}'`);
+        return folder.data; // Return the new folder object { id, name, webViewLink }
+    } catch (error) {
+        console.error(`[Drive Service] _createDriveFolder: Error creating folder "${name}" under parent '${effectiveParentId}':`, error.response ? error.response.data : error.message);
+        throw error;
+    }
+};
+
+// --- REVISED: Find or Create Folder (Generic) ---
+// This is a general utility. It does NOT handle sharing; sharing is a separate concern.
+const findOrCreateFolder = async (drive, folderName, parentFolderId) => {
+    // parentFolderId can be null/undefined for root, or an actual ID.
+    const effectiveParentId = parentFolderId || 'root'; // For logging and clarity
+    console.log(`[Drive Service] findOrCreateFolder: Ensuring folder: Name='${folderName}', ParentID='${effectiveParentId}'`);
+
+    try {
+        let folder = await _findDriveFolder(drive, folderName, parentFolderId);
+        if (!folder) {
+            console.log(`[Drive Service] findOrCreateFolder: Folder '${folderName}' not found in parent '${effectiveParentId}'. Creating...`);
+            folder = await _createDriveFolder(drive, folderName, parentFolderId);
+        }
+        return folder; // Returns { id, name, webViewLink }
+    } catch (error) {
+        console.error(`[Drive Service] findOrCreateFolder: Error in find/create process for folder '${folderName}' in parent '${effectiveParentId}':`, error.message);
+        throw new Error(`Failed to find or create folder '${folderName}'. Ensure service account has permissions on parent folder ID: ${effectiveParentId}. Original error: ${error.message}`);
     }
 };
 
 
-// --- NEW: Get SINGLE User Folder Details ---
+// --- MODIFIED: Get User Folder Details (for nested structure) ---
 /**
- * Finds or creates the user's single dedicated folder (named after username) and returns its ID and webViewLink.
+ * Finds or creates the user's dedicated folder structure: MAIN_APP_FOLDER / College_Name / User_Name
+ * and returns the ID and webViewLink of the innermost user-specific folder.
  * @param {string} userName - The user's name (used for folder naming).
- * @returns {Promise<{id: string, link: string}>} - The ID and webViewLink of the user's folder.
+ * @param {string} collegeName - The user's college name (used for the intermediate folder).
+ * @param {object} [driveInstance] - Optional pre-authenticated drive instance.
+ * @returns {Promise<{id: string, link: string | null, collegeDriveFolderId: string}>} - The ID and webViewLink of the user's folder, and collegeFolderId.
  */
-const getUserDriveFolderDetails = async (userName) => {
-    if (!userName) {
-        throw new Error('User name is required to get user Drive folder details.');
+const getUserDriveFolderDetails = async (userName, collegeName, driveInstance) => {
+    if (!userName || !collegeName) {
+        throw new Error('User name and college name are required to get user Drive folder details.');
     }
-    // Sanitize username for folder name
-    const userFolderName = userName.replace(/[^a-zA-Z0-9\s_-]/g, '_');
+    // Sanitize names for folder creation
+    const sanitizedUserName = (userName.replace(/[^a-zA-Z0-9\s_-]/g, '_').trim() || `user_${Date.now()}`);
+    const sanitizedCollegeName = collegeName.replace(/[^a-zA-Z0-9\s_-]/g, '_').trim();
+
+    if (!sanitizedUserName) throw new Error('Sanitized user name cannot be empty.');
+    if (!sanitizedCollegeName) throw new Error('Sanitized college name cannot be empty.');
 
     try {
-        const drive = await authenticate();
+        const drive = driveInstance || await authenticate();
 
-        // 1. Find/Create Main Folder ('Test')
-        console.log(`[Drive Service - User Folder] Step 1: Finding/Creating main folder '${MAIN_FOLDER_NAME}'...`);
-        const mainFolderId = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, 'root', false);
-        console.log(`[Drive Service - User Folder] Main folder ID: ${mainFolderId}`);
+        // 1. Find/Create Main Application Folder (e.g., 'Test')
+        console.log(`[Drive Service - User Hierarchy] Step 1: Ensuring main app folder '${MAIN_FOLDER_NAME}'...`);
+        const mainAppFolder = await findOrCreateFolder(drive, MAIN_FOLDER_NAME, null); // Parent is root (null)
+        if (!mainAppFolder || !mainAppFolder.id) {
+            throw new Error(`Failed to find or create the main application folder: ${MAIN_FOLDER_NAME}`);
+        }
+        console.log(`[Drive Service - User Hierarchy] Main app folder: ID=${mainAppFolder.id}, Name='${mainAppFolder.name}'`);
 
-        // 2. Find/Create the SINGLE User Folder (named userName) inside the main folder
-        console.log(`[Drive Service - User Folder] Step 2: Finding/Creating user folder '${userFolderName}' inside '${mainFolderId}'...`);
-        const userFolderId = await findOrCreateFolder(drive, userFolderName, mainFolderId, true); // Share with TARGET_USER_EMAIL
-        console.log(`[Drive Service - User Folder] User folder ID: ${userFolderId}`);
+        // 2. Find/Create College-Specific Folder (inside the main app folder)
+        console.log(`[Drive Service - User Hierarchy] Step 2: Ensuring college folder '${sanitizedCollegeName}' inside '${mainAppFolder.name}' (ID: ${mainAppFolder.id})...`);
+        const collegeFolder = await findOrCreateFolder(drive, sanitizedCollegeName, mainAppFolder.id);
+        if (!collegeFolder || !collegeFolder.id) {
+            throw new Error(`Failed to find or create the college folder: ${sanitizedCollegeName}`);
+        }
+        console.log(`[Drive Service - User Hierarchy] College folder: ID=${collegeFolder.id}, Name='${collegeFolder.name}'`);
 
-        // 3. Get the webViewLink for the user folder
-        console.log(`[Drive Service - User Folder] Step 3: Fetching webViewLink for folder ID: ${userFolderId}...`);
-        const folderDetails = await drive.files.get({ fileId: userFolderId, fields: 'webViewLink' });
-        const folderLink = folderDetails.data.webViewLink;
+        // 3. Share the College-Specific Folder with TARGET_USER_EMAIL (if configured)
+        // This allows the target user to see the College folder in "Shared with me"
+        if (TARGET_USER_EMAIL) {
+            console.log(`[Drive Service - User Hierarchy] Step 3: Adding editor permission for ${TARGET_USER_EMAIL} to college folder ID: ${collegeFolder.id}`);
+            await addEditorPermission(drive, collegeFolder.id, TARGET_USER_EMAIL);
+        } else {
+            console.log(`[Drive Service - User Hierarchy] Step 3: Skipping sharing of college folder as TARGET_USER_EMAIL is not set.`);
+        }
 
-        if (!folderLink) console.warn(`[Drive Service - User Folder] Could not retrieve webViewLink for folder ID: ${userFolderId}`);
-        else console.log(`[Drive Service - User Folder] User folder link: ${folderLink}`);
+        // 4. Find/Create User-Specific Folder (inside the college folder)
+        console.log(`[Drive Service - User Hierarchy] Step 4: Ensuring user folder '${sanitizedUserName}' inside '${collegeFolder.name}' (ID: ${collegeFolder.id})...`);
+        const userSpecificFolder = await findOrCreateFolder(drive, sanitizedUserName, collegeFolder.id);
+        if (!userSpecificFolder || !userSpecificFolder.id) {
+            throw new Error(`Failed to find or create the user-specific folder: ${sanitizedUserName}`);
+        }
+        console.log(`[Drive Service - User Hierarchy] User-specific folder: ID=${userSpecificFolder.id}, Name='${userSpecificFolder.name}', Link=${userSpecificFolder.webViewLink}`);
 
-        return { id: userFolderId, link: folderLink || null }; // Return ID and Link
+        // 5. Share the User-Specific Folder with TARGET_USER_EMAIL (if configured) - This is still useful for direct links
+        if (TARGET_USER_EMAIL) {
+            console.log(`[Drive Service - User Hierarchy] Step 5: Adding editor permission for ${TARGET_USER_EMAIL} to user folder ID: ${userSpecificFolder.id}`);
+            await addEditorPermission(drive, userSpecificFolder.id, TARGET_USER_EMAIL);
+        } else {
+            console.log(`[Drive Service - User Hierarchy] Step 5: Skipping sharing of user folder as TARGET_USER_EMAIL is not set.`);
+        }
+        
+        const folderLink = userSpecificFolder.webViewLink;
+        if (!folderLink) {
+            console.warn(`[Drive Service - User Hierarchy] Could not retrieve webViewLink for user folder ID: ${userSpecificFolder.id}.`);
+        }
+
+        return {
+            id: userSpecificFolder.id,
+            link: folderLink || null,
+            collegeDriveFolderId: collegeFolder.id // Return this so caller can update College model
+        };
 
     } catch (error) {
-        console.error(`[Drive Service - User Folder] Error getting folder details for user '${userName}':`, error);
-        throw new Error(`Failed to get user Drive folder details: ${error.message}`);
+        console.error(`[Drive Service - User Hierarchy] Error getting folder details for user '${userName}' in college '${collegeName}':`, error.message);
+        if (error.response && error.response.data) { // Log Google API specific errors
+            console.error('[Drive Service - User Hierarchy] Google API Error Response:', JSON.stringify(error.response.data, null, 2));
+        }
+        throw new Error(`Failed to get user Drive folder hierarchy: ${error.message}`);
     }
 };
 
@@ -288,4 +357,5 @@ module.exports = {
     uploadScreenshotToDrive,
     uploadProfilePhotoToDrive,
     getUserDriveFolderDetails,
+    // findOrCreateFolder, // Export if needed directly by other services/routes
 };

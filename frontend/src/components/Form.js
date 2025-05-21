@@ -1,80 +1,84 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// Import the custom hook
-import { useMediaPipeFaceDetection } from '../hooks/useMediaPipeFaceDetection'; // Adjust path if needed
-import { useAudioDetection } from '../hooks/useAudioDetection'; // <-- ADD THIS
-import './Form.css'; // Import the CSS file for styling
 
+import { useMediaPipeFaceDetection } from '../hooks/useMediaPipeFaceDetection'; 
+import { useAudioDetection } from '../hooks/useAudioDetection'; 
+import './Form.css'; 
 const Form = () => {
     // --- State for User Details ---
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
-    const [collegeName, setCollegeName] = useState(''); // <<< NEW: State for College Name
-    const [uniqueId, setUniqueId] = useState(null); // <<< NEW: State for Unique ID
-    const [userId, setUserId] = useState(null); // To store the user's ID after submission
-    const [warningStartTime, setWarningStartTime] = useState(null); // To track when warning appears
+    const [collegeName, setCollegeName] = useState(''); 
+    const [uniqueId, setUniqueId] = useState(null); 
+    const [userId, setUserId] = useState(null); 
+    const [warningStartTime, setWarningStartTime] = useState(null); 
     const [isLoading, setIsLoading] = useState(false);
-    const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); // <-- ADD THIS
-    const emailReminderShownRef = useRef(false); // Ref to track if dialog was shown
-    const [emailId, setEmailId] = useState(null); // To store the user's email ID after submission
-    const [isTestEffectivelyOver, setIsTestEffectivelyOver] = useState(false); // New state for form submission completion
+    const [showEmailReminderDialog, setShowEmailReminderDialog] = useState(false); 
+    const emailReminderShownRef = useRef(false); 
+    const [emailId, setEmailId] = useState(null); 
+    const [isTestEffectivelyOver, setIsTestEffectivelyOver] = useState(false); 
     
-    const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); // <-- ADD THIS
-    const closeBlockedTimeoutRef = useRef(null); // <-- ADD THIS (to manage timeout)
+    // --- State for Google Form loading ---
+    const [googleFormUrl, setGoogleFormUrl] = useState('');
+    const [isLoadingGoogleForm, setIsLoadingGoogleForm] = useState(false);
+    const [errorLoadingGoogleForm, setErrorLoadingGoogleForm] = useState('');
+
+    const [closeBlockedMessage, setCloseBlockedMessage] = useState(''); 
+    const closeBlockedTimeoutRef = useRef(null); 
 
     // --- State for Form Flow & Errors ---
-    const [submitted, setSubmitted] = useState(false); // True ONLY when test phase begins
+    const [submitted, setSubmitted] = useState(false); 
     const [error, setError] = useState('');
     const [nameError, setNameError] = useState('');
     const [emailError, setEmailError] = useState('');
     const [phoneError, setPhoneError] = useState('');
-    //const [cameraError, setCameraError] = useState('');
-    const [iconViolationType, setIconViolationType] = useState(null); // NEW: State for icon violations
+    
+    const [iconViolationType, setIconViolationType] = useState(null); 
     const [showScreenShareRequiredError, setShowScreenShareRequiredError] = useState(false);
 
     // --- State for Camera ---
     const [cameraStream, setCameraStream] = useState(null);
-    const [isCameraOn, setIsCameraOn] = useState(false); // Represents intent/state
+    const [isCameraOn, setIsCameraOn] = useState(false); 
     const [isVideoReady, setIsVideoReady] = useState(false);
     const videoRef = useRef(null);
-    const canvasRef = useRef(null); // Still needed for capture during submit
-    const isInitialCameraStopped = useRef(false); // Ref to track if initial camera stop was triggered
-    const [cameraError, setCameraError] = useState(''); // For operational errors (start failed, etc.)
+    const canvasRef = useRef(null); 
+    const isInitialCameraStopped = useRef(false); 
+    const [cameraError, setCameraError] = useState(''); 
 
     // --- NEW: State for Initial Camera Availability Check ---
-    const [isCameraAvailable, setIsCameraAvailable] = useState(null); // null = checking, false = not found/error, true = found
-    const [cameraAvailabilityError, setCameraAvailabilityError] = useState(''); // Specific error for the initial check
+    const [isCameraAvailable, setIsCameraAvailable] = useState(null); 
+    const [cameraAvailabilityError, setCameraAvailabilityError] = useState(''); 
 
 
 
     // --- ADDED: State for face detection event timing ---
     const [noFaceStartTime, setNoFaceStartTime] = useState(null);
     const [multipleFaceStartTime, setMultipleFaceStartTime] = useState(null);
-    const [lookingAwayStartTime, setLookingAwayStartTime] = useState(null); // <-- NEW: Timer for looking away
-    // --- END ADDED ---
+    const [lookingAwayStartTime, setLookingAwayStartTime] = useState(null); 
+    
 
     // --- ADDED: State to track the specific type of the current warning ---
     const [currentWarningType, setCurrentWarningType] = useState(null);
-    // --- END ADDED ---
+   
 
     // --- Configuration for Consecutive Noise Alert ---
     const REQUIRED_CONSECUTIVE_NOISE_COUNT = 4; // Trigger after 4 consecutive violations
     const NOISE_TIME_WINDOW_MS = 10000; // Within 10 seconds
     const NOISE_RESET_INACTIVITY_MS = 5000;
-    // --- End Configuration ---
+    
 
     // --- Refs to track consecutive noise ---
     const consecutiveNoiseCountRef = useRef(0);
     const firstNoiseViolationInSequenceTimestampRef = useRef(null);
-    const lastNoiseViolationTimestampRef = useRef(null); // To check for consecutiveness
-    // --- End Refs ---
+    const lastNoiseViolationTimestampRef = useRef(null); 
+    
 
 
     // --- State for Application Settings from Admin Panel ---
     const [applicationSettings, setApplicationSettings] = useState(null);
-    const [settingsLoading, setSettingsLoading] = useState(true); // True until settings are fetched
+    const [settingsLoading, setSettingsLoading] = useState(true);
 
-    const [isTimerPaused, setIsTimerPaused] = useState(false); // <<< NEW: State for pausing the timer
+    const [isTimerPaused, setIsTimerPaused] = useState(false);
 
    
 
@@ -101,9 +105,9 @@ const Form = () => {
         detectionStatus,
         faceDetectedBox,
         getLatestDetectedBox,
-        isLookingAway, // <-- NEW: Get head pose status from hook
+        isLookingAway, 
         numberOfFacesDetected
-    } = useMediaPipeFaceDetection(videoRef, isCameraOn, isVideoReady); // Detect when camera should be active
+    } = useMediaPipeFaceDetection(videoRef, isCameraOn, isVideoReady); 
 
     // --- State for Proctoring/Google Form ---
     const [showInstructions, setShowInstructions] = useState(false);
@@ -120,11 +124,11 @@ const Form = () => {
     const [noiseStartTime, setNoiseStartTime] = useState(null);
     // --- ADDED: Ref for the audio visualization canvas ---
     const audioCanvasRef = useRef(null);
-    // --- END ADDED ---
+    
     const wsRef = useRef(null);
 
      // --- Use the Audio Level Detection Hook ---
-     //const isAudioMonitoringActive = applicationSettings && applicationSettings.noiseDetectionEnabled && submitted && !!mediaStream && !isTimeOver && !isTestEffectivelyOver && !settingsLoading;
+     
      const isTestActiveForProctoring = submitted && 
      userId && 
      !isTimeOver && 
@@ -135,20 +139,20 @@ const Form = () => {
 const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings.noiseDetectionEnabled;
 
      const {
-         isAboveThreshold: isNoiseLevelHigh, // Rename for clarity
-         currentDecibels, // Optional: for debugging/display
-         audioError: hookAudioError, // Get error from hook
-         isMonitoring: isAudioMonitoring, // Check if hook is actively monitoring
+         isAboveThreshold: isNoiseLevelHigh, 
+         currentDecibels, 
+         audioError: hookAudioError, 
+         isMonitoring: isAudioMonitoring, 
          waveformArray
      } = useAudioDetection(isAudioMonitoringActive);
 
-    // --- Validation Functions (Unchanged) ---
+    
     const validateEmail = (email) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return emailRegex.test(email);
     };
     const validatePhone = (phone) => {
-        const phoneRegex = /^[0-9]{10}$/; // Example: 10-digit phone number
+        const phoneRegex = /^[0-9]{10}$/; 
         return phoneRegex.test(phone);
     };
 
@@ -157,7 +161,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
     // --- Camera Control Functions ---
     const stopCamera = useCallback(() => {
         console.log("<<< stopCamera called >>>");
-        // Use functional state update for cameraStream to avoid stale closures
+        
         setCameraStream(prevStream => {
             if (prevStream) {
                 console.log(`Stopping tracks for stream ID: ${prevStream.id}`);
@@ -166,31 +170,25 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     console.log(`   Track kind stopped: ${track.kind}, state: ${track.readyState}`);
                 });
                 if (videoRef.current) {
-                    videoRef.current.srcObject = null; // Explicitly clear srcObject
+                    videoRef.current.srcObject = null; 
                     console.log("   Cleared video srcObject");
                 }
-                return null; // Update state to null
+                return null; 
             }
             console.log("   No active stream found to stop.");
-            return null; // No stream existed, ensure state is null
+            return null; 
         });
-        // Reset other states reliably after stream handling
+       
         setIsCameraOn(false);
         setIsVideoReady(false);
         console.log("   Camera state set to OFF and NOT READY.");
-    }, []); // No dependencies needed
-
+    }, []); 
     const startCamera = useCallback(async (phase = 'initial') => {
 
         // --- ADDED: Check if camera was found available initially ---
         if (isCameraAvailable === false) {
             console.log(`startCamera (${phase}): Aborting. Initial check found no camera available.`);
-            // Ensure the availability error is shown if not already
-            // if (!cameraAvailabilityError) {
-            //     setCameraAvailabilityError('Camera is required to process further.');
-            // }
-            // Set an operational cameraError to be displayed by UI elements that show cameraError
-            // This helps distinguish from the general cameraAvailabilityError on the initial form.
+            
             if (phase === 'initial' && applicationSettings?.userPhotoFeatureEnabled) {
                  //setCameraError('Photo capture unavailable: No camera detected on your device.');
             } else if (phase === 'test' && applicationSettings?.liveVideoStreamEnabled) {
@@ -199,33 +197,33 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             // Ensure camera state reflects it's not on
             setIsCameraOn(false);
             setIsVideoReady(false);
-            return; // Don't try to start if check failed
+            return; 
         }
-        // --- END ADDED ---
+       
 
 
 
 
         // Check if already on/starting to prevent race conditions
-        // Use local check before async call
+        
         if (isCameraOn || cameraStream) {
             console.log(`startCamera (${phase}): Already starting/on (isCameraOn: ${isCameraOn}, stream: ${!!cameraStream}). Aborting.`);
             return;
         }
         console.log(`>>> startCamera called for phase: ${phase} >>>`);
         setCameraError('');
-        setIsVideoReady(false); // Reset readiness
+        setIsVideoReady(false); 
 
-        // Stop previous stream just in case (should be redundant now, but safe)
+        
         if (cameraStream) {
              console.warn(`startCamera (${phase}): Found existing stream unexpectedly. Stopping it.`);
-             stopCamera(); // Use the stop function
+             stopCamera(); 
         }
 
         if (!detectorReady) {
             setCameraError("Face detector is not ready yet. Please wait.");
             console.log(`startCamera (${phase}) failed: Detector not ready.`);
-            setIsCameraOn(false); // Ensure state reflects failure
+            setIsCameraOn(false); 
             return;
         }
 
@@ -234,12 +232,12 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
             console.log(`startCamera (${phase}): Camera stream obtained:`, stream.id);
             if (!stream.getVideoTracks().length) {
-                 stream.getTracks().forEach(t => t.stop()); // Clean up partial stream
+                 stream.getTracks().forEach(t => t.stop()); 
                  throw new Error("No video track available.");
             }
             // Set state *after* successful acquisition
             setCameraStream(stream);
-            setIsCameraOn(true); // Set intent/state to ON
+            setIsCameraOn(true); 
             console.log(`startCamera (${phase}): State set to ON.`);
         } catch (err) {
             console.error(`startCamera (${phase}): Error accessing camera:`, err.name, err.message);
@@ -248,20 +246,19 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             else if (err.name === "NotFoundError") userMessage = "No camera found.";
             else if (err.name === "NotReadableError") userMessage = "Camera is already in use.";
             setCameraError(userMessage);
-            // Ensure state is fully reset on error
+            
             setCameraStream(null);
             setIsCameraOn(false);
             setIsVideoReady(false);
         }
-    // Dependencies: detectorReady (condition), stopCamera (internal safety net)
-    // Avoid isCameraOn/cameraStream here to break loops, rely on check inside.
+    
     }, [detectorReady, stopCamera, isCameraAvailable, applicationSettings]);
 
 
-    // --- NEW Effect: Initial Camera Availability Check ---
+    // --- Initial Camera Availability Check ---
     useEffect(() => {
-        // Only run this check once when the component mounts and before submission
-        if (!submitted && isCameraAvailable === null) { // Check only if status is 'checking' (null)
+        
+        if (!submitted && isCameraAvailable === null) { 
             const checkCameraAvailability = async () => {
                 console.log(">>> Effect (Camera Check): Running initial camera availability check...");
                 if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
@@ -278,18 +275,16 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     if (hasVideoInput) {
                         console.log("Effect (Camera Check): Camera detected.");
                         setIsCameraAvailable(true);
-                        setCameraAvailabilityError(''); // Clear any error
+                        setCameraAvailabilityError(''); 
                     } else {
                         console.warn("Effect (Camera Check): No camera detected.");
                         setIsCameraAvailable(false);
-                        //setCameraAvailabilityError('Camera is required to process further.');
-                        // setCameraAvailabilityError('No camera hardware detected. Features requiring a camera (like photo capture or live video, if enabled) will be unavailable.');
+                       
                     }
                 } catch (err) {
                     console.error("Effect (Camera Check): Error enumerating devices:", err);
                     setIsCameraAvailable(false);
-                    // Provide a slightly different error for enumeration issues vs. not found
-                    //setCameraAvailabilityError('Could not check for camera. Please ensure permissions are allowed if prompted previously.');
+                    
                     setCameraAvailabilityError('Could not check for camera. Features requiring a camera may be unavailable.');
                     
                 }
@@ -297,9 +292,9 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
             checkCameraAvailability();
         }
-    }, [submitted, isCameraAvailable]); // Run when submitted changes or check state changes (but logic prevents re-run after initial check)
+    }, [submitted, isCameraAvailable]); 
 
-    // --- Function to Fetch Application Settings (lifted for broader accessibility) ---
+    // --- Function to Fetch Application Settings  ---
     const fetchAppSettings = useCallback(async () => {
         const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
     
@@ -310,7 +305,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             periodicScreenshotsEnabled: false,
             screenshotIntervalSeconds: 30,
             testDurationSeconds: 600, // Default to 10 minutes (600 seconds)
-            testDurationInterval: 10, // Default 10 minutes, consistent with backend model
+            testDurationInterval: 10, // Default 10 minutes
         });
     
         console.log("Attempting to fetch application settings...");
@@ -334,7 +329,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         } finally {
             setSettingsLoading(false);
         }
-    }, []); // Empty dependency array as it doesn't depend on props/state from Form
+    }, []); 
     
     // --- Effect: Initial Fetch of Application Settings ---
     useEffect(() => {
@@ -353,11 +348,10 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 console.log('Decoded college name from URL:', decodedName);
             } catch (e) {
                 console.error('Failed to decode college name from URL parameter:', e);
-                // Optionally, set an error message or a default college name
-                // setCollegeName("Error: Could not decode college name");
+                
             }
         }
-    }, []); // Runs once on component mount
+    }, []); 
 
     // --- Effect: WebSocket Connection Management ---
     useEffect(() => {
@@ -371,7 +365,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             return;
         }
 
-        // If there's an existing wsRef but it's not open (e.g., closed, closing), clean it up first.
+        
         if (wsRef.current) {
             console.log('WebSocket: Stale connection found, closing it before reconnecting.');
             wsRef.current.close();
@@ -380,9 +374,8 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
         // Proceed to establish a new connection
         if (emailId) {
-            // Determine WebSocket URL based on environment
-            // Ensure your .env has REACT_APP_WS_URL=ws://localhost:5000 (or wss://your-prod-domain.com)
-            const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:5000'; // Fallback for local dev
+            
+            const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:5000'; 
             console.log(`Attempting to connect WebSocket to: ${wsUrl}`);
 
             const ws = new WebSocket(wsUrl);
@@ -399,23 +392,13 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     const data = JSON.parse(event.data);
                     console.log('WebSocket message received:', data);
 
-                    // Listen for the specific confirmation message from the backend
-                    // if (data.type === 'FORM_SUBMITTED_CONFIRMED' && data.email === emailId) {
-                    //     console.log('Form submission confirmed via WebSocket!');
-                    //     setCurrentWarningType('form_submitted');
-                    //     setIsTestEffectivelyOver(true); // Signal that the test is over
-                    // } 
                     
-                    
-                    // else if (data.type === 'IDENTIFIED') {
 
                     if (data.type === 'FORM_SUBMITTED_CONFIRMED') {
                         console.log(`FORM_SUBMITTED_CONFIRMED received. Comparing server email ('${data.email}') with local emailId ('${emailId}').`);
                         if (data.email === emailId) {
                             console.log('Email match! Form submission confirmed for this user. Setting isTestEffectivelyOver to true.');
-                            // No need to show an intermediate warning popup if we're going straight to the "Test Concluded" screen.
-                            // setCurrentWarningType('form_submitted'); 
-                            // setShowWarning(true); 
+                            
                             setIsTestEffectivelyOver(true); // This will trigger the "Test Session Concluded" view and cleanup.
                         } else {
                             console.warn('FORM_SUBMITTED_CONFIRMED received, but data.email does not match local emailId. Ignoring notification for this client.');
@@ -431,29 +414,76 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
             ws.onclose = (event) => {
                 console.log(`WebSocket connection closed: Code=${event.code}, Reason=${event.reason}`);
-                wsRef.current = null; // Clear the ref on close
+                wsRef.current = null; 
             };
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                wsRef.current = null; // Clear the ref on error too
+                wsRef.current = null;
             };
         }
 
-        // Cleanup function: Close WebSocket connection when component unmounts or userId changes
+        
         return () => {
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                 console.log('Closing WebSocket connection due to component unmount or userId change.');
                 wsRef.current.close();
             }
-            wsRef.current = null; // Ensure ref is cleared
+            wsRef.current = null; 
         };
-    }, [emailId, fetchAppSettings]); // Add fetchAppSettings as a dependency
+    }, [emailId, fetchAppSettings]); 
+
+    // --- Effect: Fetch Google Form Link when test is ready to start ---
+    useEffect(() => {
+        
+        if (submitted && !isTestEffectivelyOver && applicationSettings && !googleFormUrl && !isLoadingGoogleForm) {
+            const fetchGoogleFormLink = async () => {
+                console.log("Attempting to fetch Google Form link...");
+                setIsLoadingGoogleForm(true);
+                setErrorLoadingGoogleForm('');
+                try {
+                    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+                    const response = await fetch(`${apiBaseUrl}/api/settings/google-form-link`);
+
+                    if (!response.ok) {
+                        let errorMsg = `Failed to load exam configuration (Status: ${response.status})`;
+                        try {
+                            
+                            const errorData = await response.json();
+                            errorMsg = errorData.message || errorMsg;
+                        } catch (e) {
+                           
+                            errorMsg = response.statusText || errorMsg;
+                            console.warn("Response for google-form-link was not JSON, status:", response.status);
+                        }
+                        throw new Error(errorMsg);
+                    }
+
+                    const data = await response.json();
+                    if (data.success && data.link && data.link.trim() !== '') {
+                        setGoogleFormUrl(data.link);
+                        console.log("Google Form link fetched successfully:", data.link);
+                    } else {
+                        const msg = data.message || 'The exam form is currently unavailable or not configured. Please contact support.';
+                        setErrorLoadingGoogleForm(msg);
+                        console.error(msg);
+                    }
+                } catch (error) {
+                    console.error('Error fetching Google Form link:', error);
+                    setErrorLoadingGoogleForm(`An error occurred while loading the exam: ${error.message}`);
+                } finally {
+                    setIsLoadingGoogleForm(false);
+                }
+            };
+
+            fetchGoogleFormLink();
+        }
+    }, [submitted, isTestEffectivelyOver, applicationSettings, googleFormUrl, isLoadingGoogleForm]);
 
     // --- Effect 1: Initial Camera Start ---
-    // This effect runs ONLY when detector becomes ready and form is not submitted.
+    
     useEffect(() => {
-        // console.log(`Effect 1 (Initial Start Check): submitted=${submitted}, detectorReady=${detectorReady}, isCameraOn=${isCameraOn}`);
+        
         console.log(`Effect 1 (Initial Start Check): submitted=${submitted}, detectorReady=${detectorReady}, isCameraOn=${isCameraOn}, settingsLoading=${settingsLoading}, userPhotoEnabled=${applicationSettings?.userPhotoFeatureEnabled}`);
 
         if (settingsLoading || !applicationSettings) {
@@ -461,11 +491,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             return;
         }
 
-        // Start only if: form not submitted, detector ready, camera not on, AND user photo feature is enabled
-        // if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled) {
-        //     console.log(">>> Effect 1: Conditions met (including userPhotoFeatureEnabled). Calling startCamera('initial').");
-        //     startCamera('initial'); // Pass phase for logging
-        // AND camera is confirmed available. startCamera itself also checks isCameraAvailable.
+        
         if (!submitted && detectorReady && !isCameraOn && applicationSettings.userPhotoFeatureEnabled && isCameraAvailable === true) {
             console.log(">>> Effect 1: Conditions met (userPhotoFeatureEnabled, camera available). Calling startCamera('initial').");
             startCamera('initial'); // Pass phase for logging
@@ -476,38 +502,28 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         else if (!submitted && detectorReady && !isCameraOn && !applicationSettings.userPhotoFeatureEnabled) {
             console.log(">>> Effect 1: User photo feature disabled by settings. Initial camera will not be started.");
         }
-        // // Start only if: form not submitted, detector ready, AND camera isn't already on.
-        // if (!submitted && detectorReady && !isCameraOn) {
-        //     console.log(">>> Effect 1: Conditions met. Calling startCamera('initial').");
-        //     startCamera('initial'); // Pass phase for logging
-        // }
-        // NO cleanup function here to stop the camera.
-    }, [submitted, detectorReady, isCameraOn, startCamera, applicationSettings, settingsLoading, isCameraAvailable]); // Depends on conditions and the start function itself
+        
+    }, [submitted, detectorReady, isCameraOn, startCamera, applicationSettings, settingsLoading, isCameraAvailable]); 
 
 
     // --- Effect 2: Stop Initial Camera on Submission or Unmount ---
-    // This effect's cleanup handles stopping the camera when the component unmounts
-    // OR when we transition *out* of the initial form phase (e.g., when 'submitted' becomes true).
+    
     useEffect(() => {
-        // The main body of this effect does nothing.
+        
         return () => {
-            // This cleanup runs on unmount OR when 'submitted' changes.
+            
             console.log(`<<< Effect 2 (Stop on Submit/Unmount) Cleanup running. Current submitted state: ${submitted}, isInitialCameraStopped: ${isInitialCameraStopped.current}`);
 
-            // Stop the camera IF:
-            // 1. We are unmounting OR 'submitted' has just become true (meaning we are leaving the initial phase)
-            // 2. The initial camera hasn't already been explicitly stopped (e.g., by requestScreenCapture)
-            // 3. The camera is currently perceived as 'on'
+           
             if (isCameraOn && !isInitialCameraStopped.current) {
                  console.log("<<< Effect 2 Cleanup: Camera is ON and initial stop not triggered yet. Calling stopCamera.");
                  stopCamera();
-                 // No need to set isInitialCameraStopped here, stopCamera handles state.
+                
             } else {
                  console.log(`<<< Effect 2 Cleanup: Conditions NOT met (isCameraOn: ${isCameraOn}, initialStopTriggered: ${isInitialCameraStopped.current}). No stop action needed.`);
             }
         };
-    // Dependency: 'submitted'. Cleanup runs when submitted changes or on unmount.
-    // Include isCameraOn and stopCamera so cleanup uses latest versions.
+    
     }, [submitted, isCameraOn, stopCamera]);
 
 
@@ -532,9 +548,9 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             console.log('Backend confirmed test start:', result.message);
         } catch (error) {
             console.error('Error calling markTestStart endpoint:', error);
-            // Decide how to handle this - maybe retry? Show user error?
+            
         }
-    }, [userId]); // Dependency on userId
+    }, [userId]); 
 
     // --- Function to call backend to mark test end ---
     const markTestEnd = useCallback(async () => {
@@ -557,7 +573,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         } catch (error) {
             console.error('Error calling markTestEnd endpoint:', error);
         }
-    }, [userId]); // Dependency on userId
+    }, [userId]);
 
 
     // --- Effect: Handle Test Completion due to Form Submission ---
@@ -597,14 +613,13 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             emailReminderShownRef.current = false;
         }
 
-    }, [submitted, mediaStream]); // Depend on submitted and mediaStream
-    // --- END Effect ---
-
+    }, [submitted, mediaStream]); 
+    
 
     // --- Effect 3: Stream Assignment and Video Readiness ---
     useEffect(() => {
         const videoElement = videoRef.current;
-        let isActive = true; // Flag to prevent state updates after cleanup
+        let isActive = true; 
 
         if (isCameraOn && cameraStream && videoElement) {
             console.log(`Effect 3 [stream]: Assigning stream ${cameraStream.id} and setting up listeners.`);
@@ -649,10 +664,10 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             videoElement.addEventListener('canplay', handleCanPlay);
             videoElement.addEventListener('error', handleError);
 
-            // Initial play attempt (browser might block this, rely on events)
+            
             console.log("Effect 3 [stream]: Attempting initial play...");
             videoElement.play().catch(e => {
-                // This warning is common and often benign if 'canplay' handles it later
+                
                 if (isActive) console.warn(`Effect 3 [stream]: Initial play() failed (may be interrupted, waiting for events): ${e.name}`);
             });
 
@@ -662,12 +677,12 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
                 videoElement.removeEventListener('canplay', handleCanPlay);
                 videoElement.removeEventListener('error', handleError);
-                // Pause is good practice, srcObject clearing is handled by stopCamera
+               
                 if (videoElement && !videoElement.paused) {
                     videoElement.pause();
                     console.log("Effect 3 [stream]: Paused video.");
                 }
-                // Reset readiness on cleanup *only if it was true*
+                
                 if (isVideoReady) {
                     console.log("Effect 3 [stream]: Cleanup setting isVideoReady to FALSE.");
                     setIsVideoReady(false);
@@ -690,12 +705,12 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                  setIsVideoReady(false);
              }
         }
-    // Dependencies: cameraStream (the source), isCameraOn (controls if we should use the stream)
-    }, [cameraStream, isCameraOn]); // isVideoReady is set *by* this effect, DO NOT include.
+    
+    }, [cameraStream, isCameraOn]); 
 
 
-    // --- Function to Capture Current Face Frame (Synchronous Logic) ---
-    // ... (No changes needed here)
+    // --- Function to Capture Current Face Frame ---
+    
     const captureCurrentFaceBase64 = () => {
         console.log("captureCurrentFaceBase64 called!");
         const video = videoRef.current;
@@ -772,13 +787,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
     };
 
 
-    // --- handleSubmit (Modified to capture photo on submit) ---
+    // --- handleSubmit ---
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        //setCameraError(''); // Clear specific camera errors too
-        // Step 1: Explicitly run all field validations (simulates onBlur)
-        // This ensures checks are done even if Enter is pressed before blurring.
+        
         const isNameValid = await checkFieldExists('name', name, setNameError);
         const isEmailValid = await checkFieldExists('email', email, setEmailError);
         const isPhoneValid = await checkFieldExists('phone', phone, setPhoneError);
@@ -786,87 +799,30 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
 
         // 1. Validate form fields
         if (!isNameValid || !isEmailValid || !isPhoneValid ) {
-            // Specific error messages are already displayed below their respective fields.
-            // No general error message is needed here.
-            // setError('Please fill in all details correctly before submitting.'); // Avoid this
+           
             return;
         }
 
-        // 2. Check camera/face state
-        // if (!isCameraOn || !isVideoReady) {
-        //     setError('Camera is not ready. Please wait or check permissions.');
-        //     return;
-        // }
-        // if (numberOfFacesDetected !== 1) {
-        //     setError('Please ensure exactly one face is clearly visible in the camera.');
-        //     return;
-        // }
-
-        // // --- ADDED: Check if user is looking away ---
-        // if (isLookingAway) {
-        //     setError('Please look straight into the screen to submit.');
-        //     return;
-        // }
-
-        // // 3. Capture the face photo NOW
-        // console.log("handleSubmit: Attempting to capture face photo...");
-        // const captureResult = captureCurrentFaceBase64();
-
-        // if (captureResult.error || !captureResult.photoBase64) {
-        //     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
-        //     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
-        //     return;
-        // }
-
-        // const capturedPhotoBase64 = captureResult.photoBase64;
-        // console.log("handleSubmit: Face photo captured successfully.");
+        
         let capturedPhotoBase64 = null;
 
         if (applicationSettings && applicationSettings.userPhotoFeatureEnabled) {
-            // 2. Check camera/face state if photo capture is enabled
-            // if (!isCameraOn || !isVideoReady) {
-            //     setError('Camera is not ready for photo capture. Please wait or check permissions.');
-            //     setIsLoading(false);
-            //     return;
-            // }
-            // if (numberOfFacesDetected !== 1) {
-            //     setError('Please ensure exactly one face is clearly visible for the photo.');
-            //     setIsLoading(false);
-            //     return;
-            // }
-            // if (isLookingAway) {
-            //     setError('Please look straight into the screen for the photo.');
-            //     setIsLoading(false);
-            //     return;
-            // }
-
-            // // 3. Capture the face photo NOW
-            // console.log("handleSubmit: User photo feature enabled. Attempting to capture face photo...");
-            // const captureResult = captureCurrentFaceBase64();
-
-            // if (captureResult.error || !captureResult.photoBase64) {
-            //     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
-            //     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
-            //     setIsLoading(false);
-            //     return;
-            // }
-            // capturedPhotoBase64 = captureResult.photoBase64;
-            // console.log("handleSubmit: Face photo captured successfully.");
+            
             if (isCameraAvailable === true) { // Only attempt capture if camera is available
                 // 2. Check camera/face state if photo capture is enabled AND camera available
                 if (!isCameraOn || !isVideoReady) {
                     setError('Camera is not ready for photo capture. Please wait or check permissions.');
-                    //setIsLoading(false);
+                    
                     return;
                 }
                 if (numberOfFacesDetected !== 1) {
                     setError('Please ensure exactly one face is clearly visible for the photo.');
-                    //setIsLoading(false);
+                    
                     return;
                 }
                 if (isLookingAway) {
                     setError('Please look straight into the screen for the photo.');
-                    //setIsLoading(false);
+                    
                     return;
                 }
 
@@ -877,19 +833,18 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 if (captureResult.error || !captureResult.photoBase64) {
                     setError(`Failed to capture face photo: ${captureResult.error || 'Unknown reason'}`);
                     console.error("handleSubmit blocked: Photo capture failed.", captureResult.error);
-                    //setIsLoading(false);
+                    
                     return;
                 }
                 capturedPhotoBase64 = captureResult.photoBase64;
                 console.log("handleSubmit: Face photo captured successfully.");
             } else if (isCameraAvailable === false) {
                 console.log("handleSubmit: User photo feature enabled, but no camera is available. Proceeding with submission, photo will be skipped.");
-                // The cameraAvailabilityError message on the form should inform the user.
+                
             } else { 
-                // isCameraAvailable is null (still checking) - this case should be blocked by isSubmitDisabled
+                
                 setError('Camera availability is still being checked. Please wait.');
-                //setIsLoading(false);
-                //console.log("handleSubmit: User photo feature enabled, but camera availability is still being checked.");
+                
                 return;
             }
         } else {
@@ -899,10 +854,9 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         setIsLoading(true);
 
         // 4. Prepare data and submit
-        // const userDetails = { name, email, phone, photoBase64: capturedPhotoBase64 };
-        //const userDetails = { name, email, phone };
-        const userDetails = { name, email, phone, collegeName }; // <<< ADDED collegeName
-        // if (capturedPhotoBase64) { // Only add if captured
+       
+        const userDetails = { name, email, phone, collegeName }; 
+        
         let logMessage = "Submitting user details...";
 
         // Add photo only if feature enabled, camera was available, AND photo was successfully captured.
@@ -917,7 +871,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         }
         console.log(logMessage, userDetails);
 
-        //console.log("Submitting form with captured photo...");
+        
 
         try {
             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/users`, {
@@ -930,13 +884,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             console.log("Submit Response Status:", response.status);
 
             if (!response.ok) {
-                // let errorMessage = `Form submission failed (Status: ${response.status})`;
-                // try { errorMessage = JSON.parse(responseBody).message || errorMessage; } catch (parseErr) { errorMessage = responseBody || errorMessage; }
-                // // If backend returns 400 due to missing photo when feature is enabled, this is where it will be caught.
-                // if (response.status === 400 && applicationSettings?.userPhotoFeatureEnabled && isCameraAvailable === false && !userDetails.photoBase64) {
-                //     console.warn("Backend rejected submission (400). This might be due to the 'User Photo Feature' being enabled but no photo provided (due to no camera). Backend may need adjustment to allow this.");
-                // }
-                // throw new Error(errorMessage);
+                
             let backendErrorMessage = `Form submission failed (Status: ${response.status})`;
                 try {
                     const parsedBody = JSON.parse(responseBodyText);
@@ -949,18 +897,17 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                              (backendErrorMessage.toLowerCase().includes('exist') || backendErrorMessage.toLowerCase().includes('already taken'));
 
                 if (isPhoneExistenceError) {
-                    setPhoneError(backendErrorMessage); // Display error below phone input
+                    setPhoneError(backendErrorMessage); 
                 } else {
-                    setError(backendErrorMessage); // Display general error
+                    setError(backendErrorMessage); 
                 }
-                // No need to throw an error here, as we've handled it by setting state.
-                // The 'finally' block will set isLoading to false.
+               
                 return; // Stop further processing in the try block    
             }
 
             // --- Success ---
             let data;
-            //try { data = JSON.parse(responseBody); } catch (parseErr) { data = { message: "Submission successful (non-JSON response)." }; }
+            
             try { data = JSON.parse(responseBodyText); } catch (parseErr) { data = { message: "Submission successful (non-JSON response)." }; }
 
             if (data && data.userId) {
@@ -968,16 +915,13 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 setEmailId(userDetails.email);
                 console.log("Submission successful, User ID:", data.userId);
                 console.log("Submission successful, email ID:", userDetails.email);
-                // Don't stop camera here. Effect 2's cleanup will handle it when 'submitted' becomes true later.
-                // Set flag to prevent Effect 2 cleanup from stopping camera if requestScreenCapture stops it first.
-                isInitialCameraStopped.current = true; // Mark that we intend to stop/restart
+                
+                isInitialCameraStopped.current = true; 
                 console.log("handleSubmit success: Marked initial camera stop flag.");
-                //setIsLoading(false); // Done in finally block
-                setShowInstructions(true); // Proceed to instructions
+                
+                setShowInstructions(true); 
             } else {
-                // console.error("Submission successful, but User ID not received!");
-                // setError("Submission succeeded, but failed to get user info.");
-                // This catches network errors or other unexpected issues before/during fetch
+                
             console.error("Network or unexpected error during submission:", error);
             setError(error.message || 'An unexpected network error occurred.');
             }
@@ -986,11 +930,11 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
             setError(error.message || 'An unexpected error occurred during submission.');
         }
         finally{
-            setIsLoading(false); // CRITICAL: Always set loading to false
+            setIsLoading(false); 
         }
     };
 
-    // --- Proctoring Log Function (Unchanged) ---
+    // --- Proctoring Log Function  ---
     const sendProctoringLog = useCallback(async (logData) => {
         if (!logData.userId) {
             console.error("Cannot send proctoring log: User ID is missing.");
@@ -1017,45 +961,32 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
         }
     }, []);
 
-     // ... (No changes needed here)
+    
     // --- Face Detection Logging/Warning Trigger (REFINED LOGIC) ---
     useEffect(() => {
         const currentTime = Date.now(); // Moved up
-        //const isActiveTestPhase = submitted && userId && mediaStream && isCameraOn && isVideoReady && !isTimeOver && !isFaceDetectionGracePeriod && !isTestEffectivelyOver; // Added !isTestEffectivelyOver
- // Revised condition for when face detection violations should be checked
- const isActiveTestPhaseForFaceDetection = 
- isTestActiveForProctoring && // General active test state
- applicationSettings.liveVideoStreamEnabled && // Live video must be enabled for face detection
- isCameraOn && 
- isVideoReady && 
- !isFaceDetectionGracePeriod;
-        // --- ADD LOGGING HERE ---
-        // console.log('[Face Check Effect START]', {
-        //     isActiveTestPhase,
-        //     numberOfFacesDetected,
-        //     currentWarningType, // Log the current warning type *before* this effect potentially changes it
-        //     isLookingAway,      // <-- Log the value received from the hook
-        //     showWarning,        // Log if warning is currently shown
-        //     noFaceStartTime: noFaceStartTime !== null,
-        //     lookingAwayStartTime: lookingAwayStartTime !== null, // <-- Log new timer
-        //     multipleFaceStartTime: multipleFaceStartTime !== null,
-        //     isTestEffectivelyOver, // Log this new state
-        //     isFaceDetectionGracePeriod,
-        // });
+       
+        const isActiveTestPhaseForFaceDetection = 
+        isTestActiveForProctoring && 
+        applicationSettings.liveVideoStreamEnabled && 
+        isCameraOn && 
+        isVideoReady && 
+        !isFaceDetectionGracePeriod; 
+        
  
         // --- Handle Active Test Phase ---
-        if (isActiveTestPhaseForFaceDetection) { // Corrected variable name
-            //let newWarningType = null; // What the warning *should* be based on faces
-            let newFaceIconType = null; // What the icon *should* be based on faces
+        if (isActiveTestPhaseForFaceDetection) { 
+            
+            let newFaceIconType = null; 
             let faceViolationActive = false;
  
             // --- Determine current face violation state ---
             if (numberOfFacesDetected === 0) {
                 faceViolationActive = true;
-                //newWarningType = 'no_face';
+                
                 newFaceIconType = 'no_face';
                 if (noFaceStartTime === null) {
-                    setNoFaceStartTime(currentTime); // Start timer for this specific violation
+                    setNoFaceStartTime(currentTime); 
                     console.log("VIOLATION TRIGGER: No Face Detected - Timer Started");
                 }
                 // Clear the other face timer if it was running
@@ -1071,7 +1002,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                 }
             } else if (numberOfFacesDetected > 1) {
                 faceViolationActive = true;
-                //newWarningType = 'multiple_face';
+                
                 newFaceIconType = 'multiple_face';
                 if (multipleFaceStartTime === null) {
                     setMultipleFaceStartTime(currentTime); // Start timer
@@ -1088,26 +1019,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
                     setLookingAwayStartTime(null);
                 }
-            // } else if (isLookingAway) { // <-- REMOVING: Check for looking away
-                // console.log("[Face Check Effect] Condition MET: isLookingAway is true"); 
-                // faceViolationActive = true;
-                // //newWarningType = 'looking_away';
-                // newFaceIconType = 'looking_away';
-                // if (lookingAwayStartTime === null) {
-                //     setLookingAwayStartTime(currentTime); // Start timer
-                //     console.log("VIOLATION TRIGGER: Looking Away Detected - Timer Started");
-                // }
-                // // Clear other face timers if they were running
-                // if (noFaceStartTime !== null) {
-                //     console.log("LOG EVENT DURATION END: No Face (transition to looking away)");
-                //     sendProctoringLog({ userId: userId, triggerEvent: 'no_face', startTime: noFaceStartTime, endTime: currentTime });
-                //     setNoFaceStartTime(null);
-                // }
-                // if (multipleFaceStartTime !== null) {
-                //     console.log("LOG EVENT DURATION END: Multiple Faces (transition to looking away)");
-                //     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
-                //     setMultipleFaceStartTime(null);
-                // }
+            
             } else { // numberOfFacesDetected === 1 AND not looking away (Normal)
                 // Log end duration for any *previously* active face violation
                 if (noFaceStartTime !== null) {
@@ -1120,16 +1032,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                     sendProctoringLog({ userId: userId, triggerEvent: 'multiple_face', startTime: multipleFaceStartTime, endTime: currentTime });
                     setMultipleFaceStartTime(null);
                 }
-                // if (lookingAwayStartTime !== null) { // <-- REMOVING: Clear looking away timer
-                //     console.log("LOG EVENT DURATION END: Looking Away (transition to 1, looking forward)");
-                //     sendProctoringLog({ userId: userId, triggerEvent: 'looking_away', startTime: lookingAwayStartTime, endTime: currentTime });
-                //     setLookingAwayStartTime(null);
-                // }
-                // Only reset general warning if it was a face-related one
-                // if (showWarning && (currentWarningType === 'no_face' || currentWarningType === 'multiple_face')) {
-                //     faceViolationActive = false; // Mark as resolved
-                //     newWarningType = null; // No face warning needed
-                // If an icon was shown for a face violation, clear it now
+               
                 if (iconViolationType === 'no_face' || iconViolationType === 'multiple_face' || iconViolationType === 'looking_away') {
                     setIconViolationType(null);
                     // currentWarningType should be null if it was for an icon, or related to tab_switch/incorrect_screen_share
@@ -2107,10 +2010,14 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
     // );
     // --- Calculate displayMinutes for instructions ---
 
+    // Condition for showing the main test environment (timer, camera, Google Form etc.)
+    const showTestEnvironment = submitted &&
+                                !isTestEffectivelyOver &&
+                                (mediaStream || (applicationSettings && !applicationSettings.periodicScreenshotsEnabled));
+
     let displayMinutes = 10; // Default value if settings are not loaded or field is missing
     if (applicationSettings) {
         if (applicationSettings.testDurationInterval && Number(applicationSettings.testDurationInterval) > 0) {
-            displayMinutes = Number(applicationSettings.testDurationInterval);
         } else if (applicationSettings.testDurationSeconds && Number(applicationSettings.testDurationSeconds) > 0) {
             // Fallback to testDurationSeconds if testDurationInterval is not available/valid
             displayMinutes = Math.floor(Number(applicationSettings.testDurationSeconds) / 60);
@@ -2335,7 +2242,6 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         {error || '\u00A0'}
                     </p>
 
-                    {/* Submit Button */}
                     <button
                         type="submit"
                         className="submit-button"
@@ -2345,10 +2251,7 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                         {submitButtonText}
                     </button>
                 </form>
-            ) : submitted &&
-                !isTestEffectivelyOver &&
-                (mediaStream || (applicationSettings && !applicationSettings.periodicScreenshotsEnabled))
-                ? ( // Test Area: Show if submitted, test not over, AND (screen share active OR screenshots are disabled)
+            ) : showTestEnvironment ? ( // Test Area: Show if submitted, test not over, AND (screen share active OR screenshots are disabled)
                 <div className="google-form-page">
                     <div className="google-form-container" ref={googleFormRef}>
                         <div className="timer-container">
@@ -2506,12 +2409,36 @@ const isAudioMonitoringActive = isTestActiveForProctoring && applicationSettings
                                 ></canvas>
                             </div> */}
                             {/* --- END ADDED --- */}
-                        <iframe
-                            src="https://forms.gle/EoDE865SsP1tNAE87"
-                            className="google-form-iframe"
-                            title="Google Form Test"
-                            frameBorder="0" marginHeight="0" marginWidth="0"
-                        >Loading…</iframe>
+
+                        {/* Google Form Loading Logic */}
+                        {isLoadingGoogleForm && (
+                            <div className="loading-message" style={{padding: '20px', textAlign: 'center'}}>
+                                <p>Loading exam form, please wait...</p>
+                                <div className="spinner" style={{margin: '20px auto'}}></div>
+                            </div>
+                        )}
+                        {errorLoadingGoogleForm && !isLoadingGoogleForm && (
+                            <div className="error-message-container" style={{padding: '20px', textAlign: 'center', color: 'red'}}>
+                                <p>{errorLoadingGoogleForm}</p>
+                                {/* Optionally, add a retry button or contact support message */}
+                            </div>
+                        )}
+                        {googleFormUrl && !isLoadingGoogleForm && !errorLoadingGoogleForm && (
+                            <iframe
+                                src={googleFormUrl} // <-- DYNAMIC URL
+                                className="google-form-iframe"
+                                title="Google Form Test"
+                                frameBorder="0" marginHeight="0" marginWidth="0"
+                                allow="camera; microphone" // Optional: if the Google Form itself needs these
+                            >Loading Google Form…</iframe>
+                        )}
+                        {!googleFormUrl && !isLoadingGoogleForm && !errorLoadingGoogleForm && !submitted && (
+                            // This case should ideally not be hit if submitted is true and other conditions are met
+                            // but acts as a fallback if the form URL is simply not available after trying.
+                            <div className="error-message-container" style={{padding: '20px', textAlign: 'center'}}>
+                                <p>The exam form could not be loaded. Please try again later or contact support.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : submitted && isTestEffectivelyOver ? ( // Test effectively over (e.g., form submitted or time up)

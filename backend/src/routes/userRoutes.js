@@ -50,22 +50,24 @@ router.post('/', async (req, res) => {
 
 
 
-        // --- 1. Get/Create the SINGLE User Drive Folder ---
-        let userDriveFolder = { id: null, link: null };
+        // --- 1. Get/Create the Nested User Drive Folder Structure ---
+        // This will now return { id: userSpecificFolderId, link: userSpecificFolderLink, collegeDriveFolderId: collegeFolderId }
+        let userDriveFolderDetails = { id: null, link: null, collegeDriveFolderId: null };
         const shouldCreateDriveFolder = appSettings && (appSettings.userPhotoFeatureEnabled || appSettings.periodicScreenshotsEnabled);
         if (shouldCreateDriveFolder) {
             try {
-                console.log(`[Routes] Getting/Creating Drive folder for user: ${name}`);
-                userDriveFolder = await getUserDriveFolderDetails(name); // Use the new function
-                if (userDriveFolder && userDriveFolder.id) {
-                    console.log(`[Routes] User Drive Folder ID: ${userDriveFolder.id}, Link: ${userDriveFolder.link}`);
+                console.log(`[Routes] Getting/Creating Drive folder structure for user: ${name}, college: ${collegeName || 'N/A'}`);
+                // Pass both name (as userName) and collegeName
+                userDriveFolderDetails = await getUserDriveFolderDetails(name, collegeName || 'DefaultCollege'); // Provide a fallback for collegeName if it can be undefined
+                if (userDriveFolderDetails && userDriveFolderDetails.id) {
+                    console.log(`[Routes] User-specific Drive Folder ID: ${userDriveFolderDetails.id}, Link: ${userDriveFolderDetails.link}, College Drive Folder ID: ${userDriveFolderDetails.collegeDriveFolderId}`);
                 } else {
-                    console.warn(`[Routes] Failed to get user Drive folder details for user ${name}. Proceeding without folder info.`);
-                    userDriveFolder = { id: null, link: null }; // Ensure reset
+                    console.warn(`[Routes] Failed to get user Drive folder details for user ${name}. Proceeding without full folder info.`);
+                    userDriveFolderDetails = { id: null, link: null, collegeDriveFolderId: null }; // Ensure reset
                 }
             } catch (folderError) {
                 console.error('[Routes] Google Drive user folder creation/retrieval failed:', folderError);
-                userDriveFolder = { id: null, link: null }; // Ensure reset on error
+                userDriveFolderDetails = { id: null, link: null, collegeDriveFolderId: null }; // Ensure reset on error
                 // Decide if this is critical. For now, proceed but log.
             }
         }
@@ -76,6 +78,7 @@ router.post('/', async (req, res) => {
 
         // --- Handle College Name ---
         let collegeId = null;
+        let collegeDocument = null; // To store the fetched/created college document
         if (collegeName && collegeName.trim() !== '') {
             const trimmedCollegeName = collegeName.trim();
             try {
@@ -84,12 +87,24 @@ router.post('/', async (req, res) => {
                     // College not found, create it
                     console.log(`[Routes] College "${trimmedCollegeName}" not found, creating new one.`);
                     college = new College({ name: trimmedCollegeName });
+                    // If we have a collegeDriveFolderId from userDriveFolderDetails, assign it now
+                    if (userDriveFolderDetails && userDriveFolderDetails.collegeDriveFolderId) {
+                        college.driveFolderId = userDriveFolderDetails.collegeDriveFolderId;
+                        console.log(`[Routes] Assigning Drive Folder ID ${userDriveFolderDetails.collegeDriveFolderId} to new college "${trimmedCollegeName}".`);
+                    }
                     await college.save();
                     console.log(`[Routes] College "${trimmedCollegeName}" created with ID: ${college._id}`);
                 } else {
                     console.log(`[Routes] College "${trimmedCollegeName}" found with ID: ${college._id}`);
+                    // If college exists and doesn't have a driveFolderId, but we got one, update it
+                    if (!college.driveFolderId && userDriveFolderDetails && userDriveFolderDetails.collegeDriveFolderId) {
+                        college.driveFolderId = userDriveFolderDetails.collegeDriveFolderId;
+                        await college.save();
+                        console.log(`[Routes] Updated existing college "${trimmedCollegeName}" with Drive Folder ID ${userDriveFolderDetails.collegeDriveFolderId}.`);
+                    }
                 }
                 collegeId = college._id;
+                collegeDocument = college; // Store the document
             } catch (collegeError) {
                 console.error('[Routes] Error finding or creating college:', collegeError);
                 // Optional: Decide if user creation should fail if college processing fails.
@@ -104,16 +119,16 @@ router.post('/', async (req, res) => {
 
         // --- Upload Photo to Google Drive ---
         let photoUploadResult = { id: null, link: null };
-        if (photoBase64 && userDriveFolder && userDriveFolder.id) { // Only attempt upload if photo data exists
+        if (photoBase64 && userDriveFolderDetails && userDriveFolderDetails.id) { // Only attempt upload if photo data and user's folder ID exist
             try {
                 
                 const fileName = `profile_${Date.now()}.jpg`; // Unique filename
 
-                console.log(`[Routes] Attempting to upload photo for user ${email} to folder ${userDriveFolder.id} as ${fileName}`);
+                console.log(`[Routes] Attempting to upload photo for user ${email} to folder ${userDriveFolderDetails.id} as ${fileName}`);
                 // --- END FIX ---
 
               // Store the object result here
-              photoUploadResult = await uploadProfilePhotoToDrive(userDriveFolder.id, photoBase64, fileName);
+              photoUploadResult = await uploadProfilePhotoToDrive(userDriveFolderDetails.id, photoBase64, fileName);
 
              // --- FIX: Correct console log to show the actual link ---
              if (photoUploadResult && photoUploadResult.link) {
@@ -153,8 +168,8 @@ router.post('/', async (req, res) => {
         }
 
         // Add Drive details to the user object
-        newUserDetails.driveFolderId = userDriveFolder.id;
-        newUserDetails.driveFolderLink = userDriveFolder.link;
+        newUserDetails.driveFolderId = userDriveFolderDetails.id; // This is the user's specific folder ID
+        newUserDetails.driveFolderLink = userDriveFolderDetails.link; // This is the user's specific folder link
         if (photoUploadResult && photoUploadResult.link) {
             newUserDetails.photoDriveLink = photoUploadResult.link;
         }
